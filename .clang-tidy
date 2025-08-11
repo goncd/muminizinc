@@ -1,0 +1,2 @@
+---
+Checks: 'clang-analyzer-*, misc-*, modernize-*, performance-*, portability-*, -modernize-use-trailing-return-type'
