@@ -9,10 +9,12 @@ project(
   LANGUAGES CXX)
 
 file(GLOB SOURCE
-    ${PROJECT_SOURCE_DIR}/src/main.cpp)
+    ${PROJECT_SOURCE_DIR}/src/arguments.cpp
+    ${PROJECT_SOURCE_DIR}/src/main.cpp
+    ${PROJECT_SOURCE_DIR}/src/mutation.cpp)
 
 # Clang-tidy
-#set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
+set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_executable(${PROJECT_NAME} ${SOURCE})
@@ -24,7 +26,7 @@ set_target_properties(${PROJECT_NAME}
         CXX_EXTENSIONS NO
 )
 
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/include")
 
 # Compiler configuration
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -53,8 +55,6 @@ target_link_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:DEBUG>:
             -fsanitize=address,leak,undefined>>)
 
-target_link_options(${PROJECT_NAME} PRIVATE -no-pie)
-
 find_package(libminizinc)
 
 if(NOT libminizinc_FOUND)
@@ -64,4 +64,4 @@ endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE mzn)
 
 list(APPEND PACKAGE_INCLUDE_DIRS "${libminizinc_INCLUDE_DIRS}")
-target_include_directories(${PROJECT_NAME} PRIVATE ${PACKAGE_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PACKAGE_INCLUDE_DIRS})
