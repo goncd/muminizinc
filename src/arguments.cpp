@@ -3,10 +3,13 @@
 #include <cstdlib>     // EXIT_SUCCESS
 #include <iostream>    // std::cerr
 #include <print>       // std::println
+#include <ranges>      // std::views::filter
 #include <span>        // std::span
 #include <string_view> // std::string_view
 
 #include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
+#include <minizinc/solver.hh> // Minizinc::MznSolver
+#include <minizinc/timer.hh>  // Minizinc::Timer
 
 #include <arguments.hpp>
 #include <mutation.hpp> // MutationModel
@@ -15,24 +18,20 @@ using namespace std::string_view_literals;
 
 using command_pointer = int (*)(std::span<const char*>);
 
-struct command
+struct Command
 {
-    std::string_view name;
-    std::string_view help;
-    command_pointer operation;
-};
+    const std::string_view name;
+    const std::string_view short_name;
+    const std::string_view help;
+    const command_pointer operation;
 
-struct option
-{
-    std::string_view name;
-    std::string_view short_name;
-    std::string_view help;
+    [[nodiscard]] constexpr bool is_option() const noexcept { return name.starts_with("--"); };
 };
 
 namespace
 {
 
-int print_version() noexcept
+int print_version(std::span<const char*>)
 {
     std::println("Built with MiniZinc {:s}.{:s}.{:s}", MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
 
@@ -55,41 +54,79 @@ int analyse(std::span<const char*> arguments)
     return EXIT_SUCCESS;
 }
 
-int help(std::span<const char*> arguments);
+int run(std::span<const char*> arguments)
+{
+    /* if (arguments.empty())
+     {
+         std::println(std::cerr, "analyse: No .mzn found");
 
-static constexpr std::array commands {
-    command {
+         return EXIT_FAILURE;
+     }*/
+
+    const MiniZinc::Timer startTime;
+
+    MiniZinc::MznSolver slv(std::cout, std::cerr, startTime);
+
+    std::vector<std::string> v;
+
+    for (const auto* const i : arguments)
+        v.emplace_back(i);
+
+    slv.run(v, "");
+
+    return EXIT_SUCCESS;
+}
+
+int print_help(std::span<const char*> arguments);
+int help(std::span<const char*> arguments);
+int clean(std::span<const char*> arguments);
+
+constexpr std::array commands {
+    Command {
         .name = "analyse",
+        .short_name = {},
         .help = "Analyses the given MiniZinc program",
         .operation = analyse },
-    command {
+    Command {
+        .name = "run",
+        .short_name = {},
+        .help = "Runs all the mutants",
+        .operation = run },
+    Command {
+        .name = "clean",
+        .short_name = {},
+        .help = "Cleans the working directory for a file",
+        .operation = clean },
+    Command {
         .name = "help",
+        .short_name = {},
         .help = "Print this message or the help of the given subcommand",
-        .operation = help }
-};
-
-static constexpr std::array global_options {
-    option {
+        .operation = help },
+    Command {
         .name = "--help",
         .short_name = "-h",
-        .help = "Prints this help message" },
-    option {
+        .help = "Print this message or the help of the given subcommand",
+        .operation = print_help },
+    Command {
         .name = "--version",
         .short_name = "-v",
-        .help = "Prints the version" }
+        .help = "Prints the version",
+        .operation = print_version }
 };
 
-int print_help() noexcept
+int print_help(std::span<const char*>)
 {
     std::println("MuMiniZinc is a mutation test tool for MiniZinc programs.");
 
     std::println("\nUsage: ./muminizinc [COMMAND]\n\nCommands:");
 
-    for (const auto& command : commands)
+    for (const auto& command : commands | std::views::filter([](const auto& command)
+                                   { return !command.is_option(); }))
         std::println("\t{}\t\t{}", command.name, command.help);
 
     std::println("\nOptions:");
-    for (const auto& option : global_options)
+    for (const auto& option : commands | std::views::filter([](const auto& option)
+                                  { return option.is_option(); }))
         std::println("\t{}, {}\t{}", option.short_name, option.name, option.help);
 
     return EXIT_SUCCESS;
@@ -98,7 +135,7 @@ int print_help() noexcept
 int help(std::span<const char*> arguments)
 {
     if (arguments.empty())
-        return print_help();
+        return print_help(arguments);
 
     if (arguments.size() > 1)
     {
@@ -106,7 +143,7 @@ int help(std::span<const char*> arguments)
         return EXIT_FAILURE;
     }
 
-    const auto command = std::ranges::find_if(commands, [argument = arguments.front()](const auto& command)
+    const auto* const command = std::ranges::find_if(commands, [argument = arguments.front()](const auto& command)
         { return command.name == argument; });
 
     if (command == commands.end())
@@ -123,31 +160,33 @@ int help(std::span<const char*> arguments)
     return EXIT_SUCCESS;
 }
 
+int clean(std::span<const char*> arguments)
+{
+    if (arguments.empty())
+    {
+        std::println(std::cerr, "analyse: No .mzn found");
+
+        return EXIT_FAILURE;
+    }
+
+    // TODO
+
+    return EXIT_SUCCESS;
+}
+
 }
 
 int parse_arguments(std::span<const char*> args)
 {
     if (args.size() < 2)
-        return print_help();
+        return print_help(args);
 
     for (std::size_t i { 1 }; i < args.size(); ++i)
     {
         const auto arg = std::string_view { args[i] };
 
-        // First, determine if it's a global option. If we find a global option that does not return,
-        // then we'll end here.
-        if (arg.starts_with('-') || arg.starts_with("--"))
-        {
-            for (const auto& option : global_options)
-            {
-                if (arg == option.short_name || arg == option.name)
-                {
-                }
-            }
-        }
-
         for (const auto& command : commands)
-            if (arg == command.name)
+            if (arg == command.name || arg == command.short_name)
                 // The command's options will be handled by itself.
                 return command.operation(args.subspan(i + 1));
 
@@ -158,5 +197,5 @@ int parse_arguments(std::span<const char*> args)
         return EXIT_FAILURE;
     }
 
-    return print_help();
+    return print_help(args);
 }

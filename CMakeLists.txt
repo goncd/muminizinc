@@ -63,5 +63,15 @@ endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE mzn)
 
-list(APPEND PACKAGE_INCLUDE_DIRS "${libminizinc_INCLUDE_DIRS}")
+foreach(dir IN LISTS libminizinc_INCLUDE_DIRS)
+    list(APPEND _fixed_includes "${dir}/include")
+endforeach()
+
+set(libminizinc_INCLUDE_DIRS "${_fixed_includes}")
+message("libminizinc: Using includes: ${libminizinc_INCLUDE_DIRS}")
+
+include_directories(${libminizinc_INCLUDE_DIRS})
+
+list(APPEND PACKAGE_INCLUDE_DIRS "${libminizinc_INCLUDE_DIRS}/include")
+message("$${PACKAGE_INCLUDE_DIRS}")
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PACKAGE_INCLUDE_DIRS})
