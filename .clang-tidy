@@ -1,2 +1,2 @@
 ---
-Checks: 'readability-*, bugprone-*, clang-analyzer-*, misc-*, modernize-*, performance-*, portability-*, -modernize-use-trailing-return-type, -misc-non-private-member-variables-in-classes, -readability-braces-around-statements'
+Checks: 'readability-*, bugprone-*, clang-analyzer-*, misc-*, modernize-*, performance-*, portability-*, -modernize-use-trailing-return-type, -misc-non-private-member-variables-in-classes, -readability-braces-around-statements, boost-*'

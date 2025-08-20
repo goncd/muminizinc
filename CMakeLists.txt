@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.30)
 
 SET(PROJECT_NAME muminizinc)
 
@@ -16,6 +16,9 @@ file(GLOB SOURCE
 # Clang-tidy
 set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# No C++20 modules for now
+cmake_policy(SET CMP0155 OLD)
 
 add_executable(${PROJECT_NAME} ${SOURCE})
 
@@ -55,11 +58,8 @@ target_link_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:DEBUG>:
             -fsanitize=address,leak,undefined>>)
 
-find_package(libminizinc)
-
-if(NOT libminizinc_FOUND)
-  error("Cannot find libminizinc.")
-endif()
+find_package(libminizinc REQUIRED)
+find_package(Boost 1.64 REQUIRED COMPONENTS process)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE mzn)
 
@@ -73,5 +73,6 @@ message("libminizinc: Using includes: ${libminizinc_INCLUDE_DIRS}")
 include_directories(${libminizinc_INCLUDE_DIRS})
 
 list(APPEND PACKAGE_INCLUDE_DIRS "${libminizinc_INCLUDE_DIRS}/include")
-message("$${PACKAGE_INCLUDE_DIRS}")
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PACKAGE_INCLUDE_DIRS})
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::process)

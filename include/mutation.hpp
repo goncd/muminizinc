@@ -1,6 +1,7 @@
 #ifndef MUTATION_HPP
 #define MUTATION_HPP
 
+#include <filesystem>
 #include <string_view>
 
 #include <minizinc/model.hh> // MiniZinc::Model
@@ -8,19 +9,25 @@
 class MutationModel
 {
 public:
-    explicit MutationModel(std::string_view path);
+    explicit MutationModel(std::filesystem::path path, std::string_view output_directory);
 
     void find_mutants();
 
-    [[nodiscard]] std::string_view mutation_original_filename_stem() const noexcept { return m_filename_stem; }
-    [[nodiscard]] std::string_view mutation_folder_path() const noexcept { return m_mutation_folder_path; }
+    void clear_output_folder();
 
-    void save_current_model(const char* path);
+    void run_mutants();
 
 private:
-    std::string m_filename_stem, m_mutation_folder_path;
+    class Mutator;
+    void save_current_model(std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id) const;
 
-    MiniZinc::Model* m_model;
+    std::filesystem::path m_model_path, m_mutation_folder_path;
+    std::string m_filename_stem;
+
+    MiniZinc::Model* m_model = nullptr;
+
+    static constexpr auto EXTENSION = std::string_view { ".mzn" };
+    static constexpr auto WIDTH_PRINTER = 80;
 };
 
 #endif
