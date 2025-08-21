@@ -1,3 +1,5 @@
+#include <arguments.hpp>
+
 #include <algorithm> // std::ranges::find_if
 #include <array>     // std::array
 #include <cstdlib>   // EXIT_SUCCESS
@@ -10,18 +12,12 @@
 #include <stdexcept>   //
 #include <string_view> // std::string_view
 
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/read.hpp>
-#include <boost/asio/readable_pipe.hpp>
-#include <boost/process/process.hpp>
-#include <boost/process/v2/environment.hpp>
-#include <boost/process/v2/stdio.hpp>
-
 #include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
-#include <minizinc/solver.hh> // Minizinc::MznSolver
-#include <minizinc/timer.hh>  // Minizinc::Timer
 
-#include <arguments.hpp>
+#include <boost/filesystem/operations.hpp>  // boost::filesystem::exists
+#include <boost/filesystem/path.hpp>        // boost::filesystem::path
+#include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
+
 #include <mutation.hpp> // MutationModel
 
 using namespace std::string_view_literals;
@@ -138,9 +134,7 @@ constexpr std::array commands {
 
 int analyse(std::span<const char*> arguments)
 {
-    if (arguments.empty())
-        throw std::runtime_error { "analyse: At least one parameter is required." };
-
+    std::string_view model_path {};
     std::string_view output_directory {};
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
@@ -159,11 +153,16 @@ int analyse(std::span<const char*> arguments)
         }
         else if (argument == option_help)
             return help_subcommand("analyse"sv);
-        else if (i != 0)
+        else if (!model_path.empty())
             throw std::runtime_error { std::format(R"(analyse: Unknown parameter "{:s}".)", arguments[i]) };
+        else
+            model_path = arguments[i];
     }
 
-    MutationModel model { std::filesystem::path { arguments.front() }, output_directory };
+    if (model_path.empty())
+        throw std::runtime_error { "analyse: Missing model path." };
+
+    MutationModel model { model_path, output_directory };
 
     model.find_mutants();
 
@@ -172,13 +171,7 @@ int analyse(std::span<const char*> arguments)
 
 int run(std::span<const char*> arguments)
 {
-    if (arguments.empty())
-    {
-        std::println(std::cerr, "run: At least one parameter is required.");
-
-        return EXIT_FAILURE;
-    }
-
+    std::string_view model_path {};
     std::string_view output_directory {};
     std::string_view compiler_path { "minizinc" };
     std::span<const char*> remaining_args {};
@@ -215,62 +208,32 @@ int run(std::span<const char*> arguments)
 
             break;
         }
-        else if (i != 0)
+        else if (!model_path.empty())
             throw std::runtime_error { std::format(R"(run: Unknown parameter "{:s}". Tip: If you want to pass arguments to the compiler, put `--` before them.)", arguments[i]) };
+        else
+            model_path = arguments[i];
     }
 
-    boost::asio::io_context ctx;
-
-    boost::asio::readable_pipe out_pipe { ctx };
-    boost::asio::readable_pipe err_pipe { ctx };
-    std::string output_out;
-    std::string output_err;
-
-    std::vector<boost::string_view> program_arguments;
-    program_arguments.reserve(remaining_args.size());
-
-    for (const auto* const argument : remaining_args)
-        program_arguments.emplace_back(argument);
+    if (model_path.empty())
+        throw std::runtime_error { "run: Missing model path." };
 
     const boost::filesystem::path executable_from_user { compiler_path };
 
     const auto executable = boost::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
 
     if (executable.empty())
-        throw std::runtime_error { std::format("Could not find the executable `{:s}`. Please add it to $PATH.", executable.c_str()) };
+        throw std::runtime_error { std::format("run: Could not find the executable `{:s}`. Please add it to $PATH.", executable_from_user.c_str()) };
 
-    boost::process::process proc(ctx,
-        executable,
-        program_arguments, boost::process::process_stdio { .in = nullptr, .out = out_pipe, .err = err_pipe });
+    const MutationModel model { model_path, output_directory };
 
-    boost::system::error_code ec;
-    boost::asio::read(out_pipe, boost::asio::dynamic_buffer(output_out), ec);
-    assert(!ec || (ec == asio::error::eof));
+    model.run_mutants(executable, remaining_args);
 
-    boost::asio::read(err_pipe, boost::asio::dynamic_buffer(output_err), ec);
-    assert(!ec || (ec == asio::error::eof));
-
-    const auto status = proc.wait();
-
-    std::println("Exit status: {}", status);
-
-    if (status == 0)
-        std::println("Out:\n{}", output_out);
-    else
-        std::println("Error:\n{}", output_err);
-
-    return status;
+    return EXIT_SUCCESS;
 }
 
 int clean(std::span<const char*> arguments)
 {
-    if (arguments.empty())
-    {
-        std::println(std::cerr, "analyse: No .mzn found");
-
-        return EXIT_FAILURE;
-    }
-
+    std::string_view model_path {};
     std::string_view output_directory {};
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
@@ -289,11 +252,16 @@ int clean(std::span<const char*> arguments)
         }
         else if (argument == option_help)
             return help_subcommand("clean"sv);
-        else if (i != 0)
+        else if (!model_path.empty())
             throw std::runtime_error { std::format(R"(clean: Unknown parameter "{:s}".)", arguments[i]) };
+        else
+            model_path = arguments[i];
     }
 
-    MutationModel model { std::filesystem::path { arguments.front() }, output_directory };
+    if (model_path.empty())
+        throw std::runtime_error { "clean: Missing model path." };
+
+    const MutationModel model { model_path, output_directory };
 
     model.clear_output_folder();
 

@@ -6,16 +6,18 @@
 
 #include <minizinc/model.hh> // MiniZinc::Model
 
+#include <boost/filesystem/path.hpp> // boost::filesystem::path
+
 class MutationModel
 {
 public:
-    explicit MutationModel(std::filesystem::path path, std::string_view output_directory);
+    explicit MutationModel(const std::filesystem::path& path, std::string_view output_directory);
 
     void find_mutants();
 
-    void clear_output_folder();
+    void clear_output_folder() const;
 
-    void run_mutants();
+    void run_mutants(const boost::filesystem::path& compiler_path, std::span<const char*> compiler_arguments) const;
 
 private:
     class Mutator;
