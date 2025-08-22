@@ -1,3 +1,4 @@
+#include <boost/asio/buffer.hpp>
 #include <mutation.hpp>
 
 #include <algorithm>   // std::ranges::find
@@ -10,18 +11,23 @@
 #include <iostream>    // std::cerr, std::cout
 #include <print>       // std::println
 #include <span>        // std::span
+#include <sstream>     // std::ostringstream
 #include <stdexcept>   // std::runtime_error
 #include <string>      // std::string
 #include <string_view> // std::string_view
 #include <utility>     // std::pair
 #include <vector>      // std::vector
 
+#include <boost/asio/io_context.hpp>    // boost::asio::io_context
 #include <boost/asio/read.hpp>          // boost::asio::read
 #include <boost/asio/readable_pipe.hpp> // boost::asio::readable_pipe
+#include <boost/asio/writable_pipe.hpp> // boost::asio::writable_pipe
+#include <boost/asio/write.hpp>         // boost::asio::write
+#include <boost/system/error_code.hpp>  // boost::asio::error_code
+
 #include <boost/filesystem/path.hpp>    // boost::filesystem::path
 #include <boost/process/v2/process.hpp> // boost::process::process
 #include <boost/process/v2/stdio.hpp>   // boost::process::process_stdio
-#include <boost/system/error_code.hpp>  // boost::system::error_code
 
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
@@ -62,19 +68,27 @@ const std::array calls {
     MiniZinc::Constants::constants().ids.exists,
 };
 
-std::pair<int, std::string> run_program(boost::asio::io_context& ctx, const boost::filesystem::path& compiler_path, std::span<boost::string_view> program_arguments)
+std::pair<int, std::string> run_program(boost::asio::io_context& ctx, const boost::filesystem::path& compiler_path, std::span<boost::string_view> program_arguments, const std::string& stdin_string = {})
 {
+    boost::asio::writable_pipe in_pipe { ctx };
     boost::asio::readable_pipe out_pipe { ctx };
     boost::asio::readable_pipe err_pipe { ctx };
 
     boost::process::process proc(ctx,
         compiler_path,
-        program_arguments, boost::process::process_stdio { .in = nullptr, .out = out_pipe, .err = err_pipe });
+        program_arguments, boost::process::process_stdio { .in = in_pipe, .out = out_pipe, .err = err_pipe });
+
+    boost::system::error_code error_code;
+
+    if (!stdin_string.empty())
+    {
+        boost::asio::write(in_pipe, boost::asio::buffer(stdin_string), error_code);
+        in_pipe.close();
+    }
 
     std::string output_out;
     std::string output_err;
 
-    boost::system::error_code error_code;
     boost::asio::read(out_pipe, boost::asio::dynamic_buffer(output_out), error_code);
     boost::asio::read(err_pipe, boost::asio::dynamic_buffer(output_err), error_code);
 
@@ -240,28 +254,40 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<co
     call->id(original_call);
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path, std::string_view output_directory) :
+MutationModel::MutationModel(const std::filesystem::path& path) :
     m_model_path { std::filesystem::absolute(path) }
 {
     if (!std::filesystem::is_regular_file(m_model_path))
         throw std::runtime_error { "Could not open the requested file." };
 
+    if (!m_model_path.has_stem())
+        throw std::runtime_error { "Could not determine the filename without extension of the model." };
+
+    m_filename_stem = m_model_path.stem().generic_string();
+}
+
+MutationModel::MutationModel(const std::filesystem::path& path, std::string_view output_directory) :
+    MutationModel { path }
+{
     // Create the folder that will hold all the mutant code.
     // First, we need to determine the name of the folder.
     // If the given path is /test_file.mzn, then the folder will be /test_file/.
     if ((output_directory.empty() && !m_model_path.has_relative_path()))
         throw std::runtime_error { "Could not automatically determine the path for storing the mutants." };
 
-    if (!m_model_path.has_stem())
-        throw std::runtime_error { "Could not determine the filename without extension of the model." };
-
-    m_filename_stem = m_model_path.stem().generic_string();
-
     m_mutation_folder_path = std::filesystem::absolute(output_directory.empty() ? m_model_path.parent_path() / std::format("{:s}-mutants", m_filename_stem) : output_directory);
 }
 
-void MutationModel::clear_output_folder() const
+void MutationModel::clear_output_folder()
 {
+    if (m_mutation_folder_path.empty())
+    {
+        if (m_memory.empty())
+            throw std::runtime_error { "There is nothing to clear" };
+
+        m_memory.clear();
+    }
+
     if (!std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.string()) };
 
@@ -278,16 +304,19 @@ void MutationModel::find_mutants()
 
     m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", {}, {}, false, true, false, true, std::cerr);
 
-    // If a folder with such name exists, then we're OK as long as it's empty. If it has contents, there might be
-    // code from an old analysis.
-    // Of course, we'll create the folder if it doesn't already exist.
-    if (std::filesystem::is_directory(m_mutation_folder_path))
+    if (!m_mutation_folder_path.empty())
     {
-        if (!std::filesystem::is_empty(m_mutation_folder_path))
-            throw std::runtime_error { std::format(R"(The selected path for storing the mutants, `{:s}`, is non-empty. Please run `clean` first or manually remove or empty the folder to avoid accidental data loss.)", m_mutation_folder_path.generic_string()) };
+        // If a folder with such name exists, then we're OK as long as it's empty. If it has contents, there might be
+        // code from an old analysis.
+        // Of course, we'll create the folder if it doesn't already exist.
+        if (std::filesystem::is_directory(m_mutation_folder_path))
+        {
+            if (!std::filesystem::is_empty(m_mutation_folder_path))
+                throw std::runtime_error { std::format(R"(The selected path for storing the mutants, `{:s}`, is non-empty. Please run `clean` first or manually remove or empty the folder to avoid accidental data loss.)", m_mutation_folder_path.generic_string()) };
+        }
+        else
+            std::filesystem::create_directory(m_mutation_folder_path);
     }
-    else
-        std::filesystem::create_directory(m_mutation_folder_path);
 
     // Print the original file passed through the compiler to strip out any comments so we can
     // diff from it cleanly.
@@ -306,32 +335,57 @@ void MutationModel::find_mutants()
     }
 }
 
-void MutationModel::save_current_model(std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id) const
+void MutationModel::save_current_model(std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id)
 {
-    if (!mutant_name.empty())
-        std::println("Generating mutant {:s}", std::format("{:s}-{:s}-{:d}-{:d}", m_filename_stem, mutant_name, mutant_id, occurrence_id));
-
     if (m_model == nullptr)
         throw std::runtime_error { "There is no model to print." };
 
-    const auto path = m_mutation_folder_path / (mutant_name.empty() ? std::format("{:s}{:s}", m_filename_stem, EXTENSION) : std::format("{:s}-{:s}-{:d}-{:d}{:s}", m_filename_stem, mutant_name, mutant_id, occurrence_id, EXTENSION));
+    const auto mutant = std::format("{:s}-{:s}-{:d}-{:d}", m_filename_stem, mutant_name, mutant_id, occurrence_id);
 
-    if (std::filesystem::exists(path))
-        throw std::runtime_error { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.string()) };
+    if (!mutant_name.empty())
+        std::println("Generating mutant {:s}", mutant);
 
-    auto file = std::ofstream(path);
+    if (m_mutation_folder_path.empty())
+    {
+        std::ostringstream ostringstream;
+        MiniZinc::Printer printer(ostringstream, WIDTH_PRINTER, false);
+        printer.print(m_model);
 
-    if (!file.is_open())
-        throw std::runtime_error { std::format(R"(Could not open the mutant file "{:s}")", path.string()) };
+        if (m_memory.empty())
+        {
+            if (!mutant_name.empty())
+                throw std::runtime_error { "Trying to store a mutant when the original source hasn't been stored." };
 
-    MiniZinc::Printer printer(file, WIDTH_PRINTER, false);
+            m_memory.emplace_back(m_filename_stem, ostringstream.str());
+        }
+        else
+        {
+            if (mutant_name.empty())
+                throw std::runtime_error { "Trying to store the original source more than once." };
 
-    printer.print(m_model);
+            m_memory.emplace_back(mutant, ostringstream.str());
+        }
+    }
+    else
+    {
+        const auto path = (m_mutation_folder_path / (mutant_name.empty() ? m_filename_stem : mutant)).replace_extension(EXTENSION);
+
+        if (std::filesystem::exists(path))
+            throw std::runtime_error { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.string()) };
+
+        auto file = std::ofstream(path);
+
+        if (!file.is_open())
+            throw std::runtime_error { std::format(R"(Could not open the mutant file "{:s}")", path.string()) };
+
+        MiniZinc::Printer printer(file, WIDTH_PRINTER, false);
+        printer.print(m_model);
+    }
 }
 
 void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<const char*> compiler_arguments) const
 {
-    if (!std::filesystem::is_directory(m_mutation_folder_path))
+    if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.string()) };
 
     boost::asio::io_context ctx;
@@ -339,48 +393,76 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     std::vector<boost::string_view> program_arguments;
     program_arguments.reserve(compiler_arguments.size() + 1);
 
+    static constexpr std::string stdin_argument { "-" };
     const auto model_path = m_model_path.string();
 
-    program_arguments.emplace_back(model_path);
+    program_arguments.emplace_back(m_memory.empty() ? model_path : stdin_argument);
 
     for (const auto* const argument : compiler_arguments)
         program_arguments.emplace_back(argument);
 
-    const auto [result, original_program_result] = run_program(ctx, compiler_path, program_arguments);
+    const auto [result, original_program_result] = run_program(ctx, compiler_path, program_arguments, m_memory.empty() ? std::string {} : m_memory.front().second);
 
     if (result != EXIT_SUCCESS)
         throw std::runtime_error { std::format("run: Could not execute the original program: {:s}", original_program_result) };
 
     std::println("Original program output:\n\n{:s}\n\n", original_program_result);
 
-    for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
+    if (m_memory.empty())
     {
-        if (entry.path().stem() == m_filename_stem)
+        for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         {
-            std::println("{:<20} {:<30}", m_filename_stem, "IGNORED");
-            continue;
+            if (entry.path().stem() == m_filename_stem)
+            {
+                std::println("{:<20} {:<30}", m_filename_stem, "IGNORED");
+                continue;
+            }
+
+            if (entry.is_directory() || entry.path().extension() != EXTENSION || !entry.path().filename().string().starts_with(m_filename_stem))
+                throw std::runtime_error { R"(One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants.)" };
+
+            const auto mutant_path = std::filesystem::absolute(entry).string();
+
+            program_arguments.front() = mutant_path;
+
+            const auto mutant_name = entry.path().stem().string();
+
+            const auto [result, mutant_output] = run_program(ctx, compiler_path, program_arguments);
+
+            std::string_view result_string {};
+
+            if (result != EXIT_SUCCESS)
+                result_string = "ERROR";
+            else if (mutant_output == original_program_result)
+                result_string = "LIVES";
+            else
+                result_string = "DIES";
+
+            std::println("{:<20} {:<30}", mutant_name, result_string);
         }
+    }
+    else
+    {
+        for (const auto& [name, model] : m_memory)
+        {
+            if (name == m_filename_stem)
+            {
+                std::println("{:<20} {:<30}", m_filename_stem, "IGNORED");
+                continue;
+            }
 
-        if (entry.is_directory() || entry.path().extension() != EXTENSION || !entry.path().filename().string().starts_with(m_filename_stem))
-            throw std::runtime_error { R"(One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants.)" };
+            const auto [result, mutant_output] = run_program(ctx, compiler_path, program_arguments, model);
 
-        const auto mutant_path = std::filesystem::absolute(entry).string();
+            std::string_view result_string {};
 
-        program_arguments.front() = mutant_path;
+            if (result != EXIT_SUCCESS)
+                result_string = "ERROR";
+            else if (mutant_output == original_program_result)
+                result_string = "LIVES";
+            else
+                result_string = "DIES";
 
-        const auto mutant_name = entry.path().stem().string();
-
-        const auto [result, mutant_output] = run_program(ctx, compiler_path, program_arguments);
-
-        std::string_view result_string {};
-
-        if (result != EXIT_SUCCESS)
-            result_string = "ERROR";
-        else if (mutant_output == original_program_result)
-            result_string = "LIVES";
-        else
-            result_string = "DIES";
-
-        std::println("{:<20} {:<30}", mutant_name, result_string);
+            std::println("{:<20} {:<30}", name, result_string);
+        }
     }
 }

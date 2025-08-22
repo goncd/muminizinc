@@ -11,17 +11,21 @@
 class MutationModel
 {
 public:
+    // Constructs a MutationModel that works only in memory.
+    explicit MutationModel(const std::filesystem::path& path);
+
+    // Constructs a MutationModel that works with a filesystem.
     explicit MutationModel(const std::filesystem::path& path, std::string_view output_directory);
 
     void find_mutants();
 
-    void clear_output_folder() const;
+    void clear_output_folder();
 
     void run_mutants(const boost::filesystem::path& compiler_path, std::span<const char*> compiler_arguments) const;
 
 private:
     class Mutator;
-    void save_current_model(std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id) const;
+    void save_current_model(std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id);
 
     std::filesystem::path m_model_path, m_mutation_folder_path;
     std::string m_filename_stem;
@@ -30,6 +34,11 @@ private:
 
     static constexpr auto EXTENSION = std::string_view { ".mzn" };
     static constexpr auto WIDTH_PRINTER = 80;
+
+    // In memory
+
+    // It's guaranteed that the first element is the original mutant.
+    std::vector<std::pair<std::string, std::string>> m_memory;
 };
 
 #endif

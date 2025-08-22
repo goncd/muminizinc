@@ -74,15 +74,23 @@ constexpr Option option_compiler_path {
     .help = "The path of the MiniZinc compiler. By default it's `minizinc`"
 };
 
+constexpr Option option_in_memory {
+    .name = "--in-memory",
+    .short_name = "-m",
+    .help = "Runs the command in memory, without reading or writing files",
+};
+
 constexpr std::array analyse_parameters {
     option_directory,
-    option_help
+    option_help,
+    option_in_memory
 };
 
 constexpr std::array run_parameters {
     option_directory,
     option_compiler_path,
-    option_help
+    option_help,
+    option_in_memory
 };
 
 constexpr std::array clean_parameters {
@@ -136,6 +144,7 @@ int analyse(std::span<const char*> arguments)
 {
     std::string_view model_path {};
     std::string_view output_directory {};
+    bool in_memory = false;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
@@ -143,6 +152,9 @@ int analyse(std::span<const char*> arguments)
 
         if (argument == option_directory)
         {
+            if (in_memory)
+                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_directory.name, option_in_memory.name) };
+
             if (i + 1 < arguments.size())
             {
                 output_directory = arguments[i + 1];
@@ -153,6 +165,13 @@ int analyse(std::span<const char*> arguments)
         }
         else if (argument == option_help)
             return help_subcommand("analyse"sv);
+        else if (argument == option_in_memory)
+        {
+            if (!output_directory.empty())
+                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}", option_in_memory.name, option_directory.name) };
+
+            in_memory = true;
+        }
         else if (!model_path.empty())
             throw std::runtime_error { std::format(R"(analyse: Unknown parameter "{:s}".)", arguments[i]) };
         else
@@ -162,9 +181,17 @@ int analyse(std::span<const char*> arguments)
     if (model_path.empty())
         throw std::runtime_error { "analyse: Missing model path." };
 
-    MutationModel model { model_path, output_directory };
+    if (in_memory)
+    {
+        MutationModel model { model_path };
 
-    model.find_mutants();
+        model.find_mutants();
+    }
+    else
+    {
+        MutationModel model { model_path, output_directory };
+        model.find_mutants();
+    }
 
     return EXIT_SUCCESS;
 }
@@ -175,6 +202,7 @@ int run(std::span<const char*> arguments)
     std::string_view output_directory {};
     std::string_view compiler_path { "minizinc" };
     std::span<const char*> remaining_args {};
+    bool in_memory { false };
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
@@ -182,6 +210,9 @@ int run(std::span<const char*> arguments)
 
         if (argument == option_directory)
         {
+            if (in_memory)
+                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_directory.name, option_in_memory.name) };
+
             if (i + 1 < arguments.size())
             {
                 output_directory = arguments[i + 1];
@@ -201,6 +232,13 @@ int run(std::span<const char*> arguments)
             }
             else
                 throw std::runtime_error { "run: --compiler_path: Missing parameter." };
+        }
+        else if (argument == option_in_memory)
+        {
+            if (!output_directory.empty())
+                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_in_memory.name, option_directory.name) };
+
+            in_memory = true;
         }
         else if (argument == "--"sv)
         {
@@ -224,9 +262,18 @@ int run(std::span<const char*> arguments)
     if (executable.empty())
         throw std::runtime_error { std::format("run: Could not find the executable `{:s}`. Please add it to $PATH.", executable_from_user.c_str()) };
 
-    const MutationModel model { model_path, output_directory };
+    if (in_memory)
+    {
+        MutationModel model { model_path };
+        model.find_mutants();
+        model.run_mutants(executable, remaining_args);
+    }
+    else
+    {
+        const MutationModel model { model_path, output_directory };
 
-    model.run_mutants(executable, remaining_args);
+        model.run_mutants(executable, remaining_args);
+    }
 
     return EXIT_SUCCESS;
 }
@@ -261,7 +308,7 @@ int clean(std::span<const char*> arguments)
     if (model_path.empty())
         throw std::runtime_error { "clean: Missing model path." };
 
-    const MutationModel model { model_path, output_directory };
+    MutationModel model { model_path, output_directory };
 
     model.clear_output_folder();
 
