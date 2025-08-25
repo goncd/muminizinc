@@ -13,12 +13,15 @@ file(GLOB SOURCE
     ${PROJECT_SOURCE_DIR}/src/main.cpp
     ${PROJECT_SOURCE_DIR}/src/mutation.cpp)
 
-# Clang-tidy
+# Static analysis
 set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
+set(CMAKE_CXX_CPPCHECK "cppcheck")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # No C++20 modules for now
 cmake_policy(SET CMP0155 OLD)
+
+configure_file(cmake/configured_files/config.hpp.in ${CMAKE_BINARY_DIR}/include/build/config.hpp ESCAPE_QUOTES)
 
 add_executable(${PROJECT_NAME} ${SOURCE})
 
@@ -30,6 +33,7 @@ set_target_properties(${PROJECT_NAME}
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/include")
 
 # Compiler configuration
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -59,7 +63,7 @@ target_link_options(${PROJECT_NAME} PRIVATE
             -fsanitize=address,leak,undefined>>)
 
 find_package(libminizinc REQUIRED)
-find_package(Boost 1.64 REQUIRED COMPONENTS process)
+find_package(Boost 1.88 REQUIRED COMPONENTS process)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE mzn)
 

@@ -1,9 +1,9 @@
 #include <arguments.hpp>
 
-#include <algorithm> // std::ranges::find_if
-#include <array>     // std::array
-#include <cstdlib>   // EXIT_SUCCESS
-#include <filesystem>
+#include <algorithm>   // std::ranges::find_if
+#include <array>       // std::array
+#include <cstdlib>     // EXIT_SUCCESS
+#include <filesystem>  //
 #include <format>      // std::format
 #include <iostream>    // std::cerr
 #include <print>       // std::println
@@ -18,7 +18,8 @@
 #include <boost/filesystem/path.hpp>        // boost::filesystem::path
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
 
-#include <mutation.hpp> // MutationModel
+#include <build/config.hpp> // config::project_version
+#include <mutation.hpp>     // MutationModel
 
 using namespace std::string_view_literals;
 
@@ -184,7 +185,6 @@ int analyse(std::span<const char*> arguments)
     if (in_memory)
     {
         MutationModel model { model_path };
-
         model.find_mutants();
     }
     else
@@ -247,7 +247,7 @@ int run(std::span<const char*> arguments)
             break;
         }
         else if (!model_path.empty())
-            throw std::runtime_error { std::format(R"(run: Unknown parameter "{:s}". Tip: If you want to pass arguments to the compiler, put `--` before them.)", arguments[i]) };
+            throw std::runtime_error { std::format("run: Unknown parameter \"{:s}\".\n\nIf you want to pass arguments to the compiler, put `--` before them.", arguments[i]) };
         else
             model_path = arguments[i];
     }
@@ -271,7 +271,6 @@ int run(std::span<const char*> arguments)
     else
     {
         const MutationModel model { model_path, output_directory };
-
         model.run_mutants(executable, remaining_args);
     }
 
@@ -343,39 +342,54 @@ int help_subcommand(std::string_view subcommand)
 
     std::println("{}", command->option.help);
 
-    std::println("\nUsage: ./minizinc {} <MODEL> <ARGUMENTS>", command->option.name);
+    std::println("\nUsage: ./muminizinc {} <MODEL> <ARGUMENTS>", command->option.name);
+
+    const auto largest_option = std::ranges::max_element(command->options,
+        {}, [](const Option& option)
+        { return option.name.length(); })
+                                    ->name.length();
 
     if (!command->options.empty())
     {
         std::println("\nOptions:");
         for (const auto& option : command->options)
-            std::println("  {}, {:<15}\t{:<25}", option.short_name, option.name, option.help);
+            std::println("  {}, {:<{}}  {}", option.short_name, option.name, largest_option, option.help);
     }
 
     return EXIT_SUCCESS;
 }
 
-int print_help(std::span<const char*>)
+int print_help(std::span<const char*> /* unused */)
 {
+    static constexpr auto largest_command = std::ranges::max_element(commands,
+        {}, [](const Command& command)
+        { return command.is_option() ? std::size_t {} : command.option.name.length(); })
+                                                ->option.name.length();
+
+    static constexpr auto largest_option = std::ranges::max_element(commands,
+        {}, [](const Command& command)
+        { return !command.is_option() ? std::size_t {} : command.option.name.length(); })
+                                               ->option.name.length();
+
     std::println("MuMiniZinc is a mutation test tool for MiniZinc programs.");
 
     std::println("\nUsage: ./muminizinc [COMMAND]\n\nCommands:");
 
     for (const auto& command : commands | std::views::filter([](const auto& command)
                                    { return !command.is_option(); }))
-        std::println("  {:<10}{:<20}", command.option.name, command.option.help);
+        std::println("  {:<{}}  {}", command.option.name, largest_command, command.option.help);
 
     std::println("\nOptions:");
     for (const auto& option : commands | std::views::filter([](const auto& option)
                                   { return option.is_option(); }))
-        std::println("  {}, {:<15}{:<25}", option.option.short_name, option.option.name, option.option.help);
+        std::println("  {}, {:<{}}  {}", option.option.short_name, option.option.name, largest_option, option.option.help);
 
     return EXIT_SUCCESS;
 }
 
-int print_version(std::span<const char*>)
+int print_version(std::span<const char*> /* unused */)
 {
-    std::println("Built with MiniZinc {:s}.{:s}.{:s}", MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
+    std::println("MuMiniZinc {:s}\nBuilt with MiniZinc {:s}.{:s}.{:s}", config::project_version, MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
 
     return EXIT_SUCCESS;
 }

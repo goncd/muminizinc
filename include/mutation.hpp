@@ -1,8 +1,8 @@
 #ifndef MUTATION_HPP
 #define MUTATION_HPP
 
-#include <filesystem>
-#include <string_view>
+#include <filesystem>  // std::filesystem::path
+#include <string_view> // std::string_view
 
 #include <minizinc/model.hh> // MiniZinc::Model
 
@@ -34,8 +34,6 @@ private:
 
     static constexpr auto EXTENSION = std::string_view { ".mzn" };
     static constexpr auto WIDTH_PRINTER = 80;
-
-    // In memory
 
     // It's guaranteed that the first element is the original mutant.
     std::vector<std::pair<std::string, std::string>> m_memory;

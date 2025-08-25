@@ -1,4 +1,3 @@
-#include <boost/asio/buffer.hpp>
 #include <mutation.hpp>
 
 #include <algorithm>   // std::ranges::find
@@ -18,16 +17,17 @@
 #include <utility>     // std::pair
 #include <vector>      // std::vector
 
+#include <boost/asio/buffer.hpp>        // boost::asio::buffer, boost::asio::dynamic_buffer
+#include <boost/asio/error.hpp>         // boost::asio::error::eof
 #include <boost/asio/io_context.hpp>    // boost::asio::io_context
 #include <boost/asio/read.hpp>          // boost::asio::read
 #include <boost/asio/readable_pipe.hpp> // boost::asio::readable_pipe
 #include <boost/asio/writable_pipe.hpp> // boost::asio::writable_pipe
 #include <boost/asio/write.hpp>         // boost::asio::write
-#include <boost/system/error_code.hpp>  // boost::asio::error_code
-
 #include <boost/filesystem/path.hpp>    // boost::filesystem::path
 #include <boost/process/v2/process.hpp> // boost::process::process
 #include <boost/process/v2/stdio.hpp>   // boost::process::process_stdio
+#include <boost/system/error_code.hpp>  // boost::system::error_code
 
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
@@ -302,7 +302,7 @@ void MutationModel::find_mutants()
 {
     MiniZinc::Env env;
 
-    m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", {}, {}, false, true, false, true, std::cerr);
+    m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", {}, {}, false, true, false, false, std::cerr);
 
     if (!m_mutation_folder_path.empty())
     {
@@ -393,7 +393,7 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     std::vector<boost::string_view> program_arguments;
     program_arguments.reserve(compiler_arguments.size() + 1);
 
-    static constexpr std::string stdin_argument { "-" };
+    static constexpr boost::string_view stdin_argument { "-" };
     const auto model_path = m_model_path.string();
 
     program_arguments.emplace_back(m_memory.empty() ? model_path : stdin_argument);
@@ -401,68 +401,62 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     for (const auto* const argument : compiler_arguments)
         program_arguments.emplace_back(argument);
 
-    const auto [result, original_program_result] = run_program(ctx, compiler_path, program_arguments, m_memory.empty() ? std::string {} : m_memory.front().second);
+    const auto [original_program_exit_code, original_program_result] = run_program(ctx, compiler_path, program_arguments, m_memory.empty() ? std::string {} : m_memory.front().second);
 
-    if (result != EXIT_SUCCESS)
-        throw std::runtime_error { std::format("run: Could not execute the original program: {:s}", original_program_result) };
+    if (original_program_exit_code != EXIT_SUCCESS)
+        throw std::runtime_error { std::format("run: Could not execute the original program:\n{:s}", original_program_result) };
 
-    std::println("Original program output:\n\n{:s}\n\n", original_program_result);
+    const auto handle_output = [&original_program_result](std::string_view mutant_name, int mutant_exit_code, std::string_view mutant_output)
+    {
+        std::string_view result_string;
+
+        if (mutant_exit_code != EXIT_SUCCESS)
+            result_string = "ERROR";
+        else if (mutant_output == original_program_result)
+            result_string = "LIVES";
+        else
+            result_string = "DIES";
+
+        std::println("{:<20} {:<30}", mutant_name, result_string);
+    };
 
     if (m_memory.empty())
     {
         for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         {
-            if (entry.path().stem() == m_filename_stem)
+            const auto entry_stem = entry.path().stem();
+
+            if (entry_stem == m_filename_stem)
             {
                 std::println("{:<20} {:<30}", m_filename_stem, "IGNORED");
                 continue;
             }
 
             if (entry.is_directory() || entry.path().extension() != EXTENSION || !entry.path().filename().string().starts_with(m_filename_stem))
-                throw std::runtime_error { R"(One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants.)" };
+                throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
 
             const auto mutant_path = std::filesystem::absolute(entry).string();
 
             program_arguments.front() = mutant_path;
 
-            const auto mutant_name = entry.path().stem().string();
+            const auto [mutant_exit_code, mutant_output] = run_program(ctx, compiler_path, program_arguments);
 
-            const auto [result, mutant_output] = run_program(ctx, compiler_path, program_arguments);
-
-            std::string_view result_string {};
-
-            if (result != EXIT_SUCCESS)
-                result_string = "ERROR";
-            else if (mutant_output == original_program_result)
-                result_string = "LIVES";
-            else
-                result_string = "DIES";
-
-            std::println("{:<20} {:<30}", mutant_name, result_string);
+            handle_output(entry_stem.string(), mutant_exit_code, mutant_output);
         }
     }
     else
     {
-        for (const auto& [name, model] : m_memory)
+        for (const auto& [mutant_name, model] : m_memory)
         {
-            if (name == m_filename_stem)
+            if (mutant_name == m_filename_stem)
             {
-                std::println("{:<20} {:<30}", m_filename_stem, "IGNORED");
+                std::println("{:<20} {:<30}", mutant_name, "IGNORED");
                 continue;
             }
 
-            const auto [result, mutant_output] = run_program(ctx, compiler_path, program_arguments, model);
+            const auto [mutant_exit_code, mutant_output] = run_program(ctx, compiler_path, program_arguments, model);
 
-            std::string_view result_string {};
-
-            if (result != EXIT_SUCCESS)
-                result_string = "ERROR";
-            else if (mutant_output == original_program_result)
-                result_string = "LIVES";
-            else
-                result_string = "DIES";
-
-            std::println("{:<20} {:<30}", name, result_string);
+            handle_output(mutant_name, mutant_exit_code, mutant_output);
         }
     }
 }
