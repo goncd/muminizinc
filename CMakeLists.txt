@@ -48,7 +48,6 @@ target_compile_options(${PROJECT_NAME} PRIVATE
         $<$<CONFIG:DEBUG>:
             -Og
             -ggdb3
-            -DDEBUG
             -fsanitize=address,leak,undefined>
         $<$<CONFIG:RELEASE>:
             -O3

@@ -391,6 +391,9 @@ int print_version(std::span<const char*> /* unused */)
 {
     std::println("MuMiniZinc {:s}\nBuilt with MiniZinc {:s}.{:s}.{:s}", config::project_version, MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
 
+    if constexpr (config::is_debug_build)
+        std::println("\nDebug build.");
+
     return EXIT_SUCCESS;
 }
 

@@ -17,17 +17,21 @@
 #include <utility>     // std::pair
 #include <vector>      // std::vector
 
-#include <boost/asio/buffer.hpp>        // boost::asio::buffer, boost::asio::dynamic_buffer
-#include <boost/asio/error.hpp>         // boost::asio::error::eof
-#include <boost/asio/io_context.hpp>    // boost::asio::io_context
-#include <boost/asio/read.hpp>          // boost::asio::read
-#include <boost/asio/readable_pipe.hpp> // boost::asio::readable_pipe
-#include <boost/asio/writable_pipe.hpp> // boost::asio::writable_pipe
-#include <boost/asio/write.hpp>         // boost::asio::write
-#include <boost/filesystem/path.hpp>    // boost::filesystem::path
-#include <boost/process/v2/process.hpp> // boost::process::process
-#include <boost/process/v2/stdio.hpp>   // boost::process::process_stdio
-#include <boost/system/error_code.hpp>  // boost::system::error_code
+#include <build/config.hpp> // config::is_debug_build
+#include <logging.hpp>      // logd
+
+#include <boost/asio/buffer.hpp>             // boost::asio::buffer, boost::asio::dynamic_buffer
+#include <boost/asio/error.hpp>              // boost::asio::error::eof
+#include <boost/asio/io_context.hpp>         // boost::asio::io_context
+#include <boost/asio/read.hpp>               // boost::asio::read
+#include <boost/asio/readable_pipe.hpp>      // boost::asio::readable_pipe
+#include <boost/asio/writable_pipe.hpp>      // boost::asio::writable_pipe
+#include <boost/asio/write.hpp>              // boost::asio::write
+#include <boost/filesystem/path.hpp>         // boost::filesystem::path
+#include <boost/process/v2/process.hpp>      // boost::process::process
+#include <boost/process/v2/stdio.hpp>        // boost::process::process_stdio
+#include <boost/system/error_code.hpp>       // boost::system::error_code
+#include <boost/utility/string_view_fwd.hpp> // boost::string_view
 
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
@@ -115,7 +119,7 @@ public:
         else if (auto* call = MiniZinc::Expression::dynamicCast<MiniZinc::Call>(expression))
             detect_type_mutation(call);
         else
-            std::println("Undetected expression {}", std::to_underlying(MiniZinc::Expression::eid(expression)));
+            logd("MutationModel::Mutator::enter: Unhandled expression {}", std::to_underlying(MiniZinc::Expression::eid(expression)));
 
         return true;
     }
@@ -142,34 +146,34 @@ MutationModel::Mutator::Mutator(MutationModel& mutation_model) :
 
 void MutationModel::Mutator::detect_type_mutation(MiniZinc::BinOp* op)
 {
-    // std::println("Detected BINOP {}", op->opToString().c_str());
+    logd("BinOP: Detected operation {}", op->opToString().c_str());
 
     if (std::ranges::find(relational_operators, op->op()) != std::end(relational_operators))
         perform_mutation(op, relational_operators);
     else if (std::ranges::find(arithmetic_operators, op->op()) != std::end(arithmetic_operators))
         perform_mutation(op, arithmetic_operators);
-    // else
-    //     std::println(std::cerr, "Undetected mutation type");
+    else
+        logd("BinOP: Undetected mutation type");
 }
 
 void MutationModel::Mutator::detect_type_mutation(MiniZinc::UnOp* op)
 {
-    // std::println("Detected UNOP {}", op->opToString().c_str());
+    logd("UnOP: Detected operation {}", op->opToString().c_str());
 
     if (std::ranges::find(unary_operators, op->op()) != std::end(unary_operators))
         perform_mutation(op, unary_operators);
-    // else
-    //     std::println(std::cerr, "Undetected mutation type");
+    else
+        logd("UnOP: Undetected mutation type");
 }
 
 void MutationModel::Mutator::detect_type_mutation(MiniZinc::Call* call)
 {
-    // std::println("Detected CallOP {}", call->id().c_str());
+    logd("CallOP: Detected call to {}", call->id().c_str());
 
     if (std::ranges::find(calls, call->id()) != std::end(calls))
         perform_mutation(call, calls);
-    // else
-    //     std::println(std::cerr, "Undetected mutation type");
+    else
+        logd("CallOP: Unknown call");
 }
 
 void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators)
@@ -177,13 +181,16 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<con
     const auto original_operator = op->op();
     const auto& loc = MiniZinc::Expression::loc(op);
 
-    const auto& lhs = MiniZinc::Expression::loc(op->lhs());
-    const auto& rhs = MiniZinc::Expression::loc(op->rhs());
+    if constexpr (config::is_debug_build)
+    {
+        const auto& lhs = MiniZinc::Expression::loc(op->lhs());
+        const auto& rhs = MiniZinc::Expression::loc(op->rhs());
 
-    // std::println("Mutate detected at {}-{} to {}-{}\n\tLHS: {}-{} to {}-{}\n\tRHS: {}-{} to {}-{}",
-    //     loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn(),
-    //     lhs.firstLine(), lhs.firstColumn(), lhs.lastLine(), lhs.lastColumn(),
-    //     rhs.firstLine(), rhs.firstColumn(), rhs.lastLine(), rhs.lastColumn());
+        logd("Mutating {}-{} to {}-{}. LHS: {}-{} to {}-{}. RHS: {}-{} to {}-{}",
+            loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn(),
+            lhs.firstLine(), lhs.firstColumn(), lhs.lastLine(), lhs.lastColumn(),
+            rhs.firstLine(), rhs.firstColumn(), rhs.lastLine(), rhs.lastColumn());
+    }
 
     std::uint64_t occurrence_id {};
 
@@ -194,7 +201,7 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<con
 
         new (op) MiniZinc::BinOp(loc, op->lhs(), candidate_operator, op->rhs());
 
-        // std::println("Candidate is {}", op->opToString().c_str());
+        logd("Mutating to {}", op->opToString().c_str());
 
         m_mutation_model.save_current_model("BinOP", mutation_BinOp_count++, occurrence_id++);
     }
@@ -208,8 +215,8 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::UnOp* op, std::span<cons
     const auto original_operator = op->op();
     const auto& loc = MiniZinc::Expression::loc(op);
 
-    // std::println("Mutate detected at {}-{} to {}-{}",
-    //     loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn());
+    logd("Mutating {}-{} to {}-{}",
+        loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn());
 
     std::uint64_t occurrence_id {};
 
@@ -220,7 +227,7 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::UnOp* op, std::span<cons
 
         new (op) MiniZinc::UnOp(loc, candidate_operator, op->e());
 
-        // std::println("Candidate is {}", op->opToString().c_str());
+        logd("Mutating to {}", op->opToString().c_str());
 
         m_mutation_model.save_current_model("UnOP", mutation_UnOp_count++, occurrence_id++);
     }
@@ -232,10 +239,14 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::UnOp* op, std::span<cons
 void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls)
 {
     const auto original_call = call->id();
-    const auto& loc = MiniZinc::Expression::loc(call);
 
-    // std::println("Mutate detected at {}-{} to {}-{} -> {}",
-    //     loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn(), call->id().c_str());
+    if constexpr (config::is_debug_build)
+    {
+        const auto& loc = MiniZinc::Expression::loc(call);
+
+        logd("Mutating {}-{} to {}-{}",
+            loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn());
+    }
 
     std::uint64_t occurrence_id {};
 
@@ -244,7 +255,7 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<co
         if (original_call == candidate_call)
             continue;
 
-        // std::println("\tMutate {} to {}", original_call.c_str(), candidate_call.c_str());
+        logd("Mutating from {} to {}", original_call.c_str(), candidate_call.c_str());
 
         call->id(candidate_call);
 
@@ -302,7 +313,7 @@ void MutationModel::find_mutants()
 {
     MiniZinc::Env env;
 
-    m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", {}, {}, false, true, false, false, std::cerr);
+    m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", {}, {}, false, true, false, config::is_debug_build, std::cerr);
 
     if (!m_mutation_folder_path.empty())
     {

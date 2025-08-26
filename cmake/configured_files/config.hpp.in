@@ -12,6 +12,13 @@ inline constexpr int project_version_major { @PROJECT_VERSION_MAJOR@ };
 inline constexpr int project_version_minor { @PROJECT_VERSION_MINOR@ };
 inline constexpr int project_version_patch { @PROJECT_VERSION_PATCH@ };
 
+inline constexpr bool is_debug_build =
+#ifdef NDEBUG
+    false
+#else
+    true
+#endif
+    ;
 } // namespace config
 
 #endif
