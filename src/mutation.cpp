@@ -354,7 +354,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     const auto mutant = std::format("{:s}-{:s}-{:d}-{:d}", m_filename_stem, mutant_name, mutant_id, occurrence_id);
 
     if (!mutant_name.empty())
-        std::println("Generating mutant {:s}", mutant);
+        std::println("Generating mutant `{:s}{:s}{:s}`", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset));
 
     if (m_mutation_folder_path.empty())
     {

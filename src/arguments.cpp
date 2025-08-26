@@ -1,15 +1,14 @@
+
 #include <arguments.hpp>
 
 #include <algorithm>   // std::ranges::find_if
 #include <array>       // std::array
 #include <cstdlib>     // EXIT_SUCCESS
-#include <filesystem>  //
 #include <format>      // std::format
-#include <iostream>    // std::cerr
 #include <print>       // std::println
 #include <ranges>      // std::views::filter
 #include <span>        // std::span
-#include <stdexcept>   //
+#include <stdexcept>   // std::runtime_error
 #include <string_view> // std::string_view
 
 #include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
@@ -19,8 +18,8 @@
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
 
 #include <build/config.hpp> // config::project_version
+#include <logging.hpp>      // logging::code, logging::Color, logging::Style
 #include <mutation.hpp>     // MutationModel
-
 using namespace std::string_view_literals;
 
 using command_pointer = int (*)(std::span<const char*>);
@@ -162,19 +161,19 @@ int analyse(std::span<const char*> arguments)
                 ++i;
             }
             else
-                throw std::runtime_error { "analyse: --directory: Missing parameter." };
+                throw std::runtime_error { std::format("analyse: {:s}: Missing parameter.", option_directory.name) };
         }
         else if (argument == option_help)
             return help_subcommand("analyse"sv);
         else if (argument == option_in_memory)
         {
             if (!output_directory.empty())
-                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}", option_in_memory.name, option_directory.name) };
+                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_in_memory.name, option_directory.name) };
 
             in_memory = true;
         }
         else if (!model_path.empty())
-            throw std::runtime_error { std::format(R"(analyse: Unknown parameter "{:s}".)", arguments[i]) };
+            throw std::runtime_error { std::format("analyse: Unknown parameter `{:s}`.", arguments[i]) };
         else
             model_path = arguments[i];
     }
@@ -219,7 +218,7 @@ int run(std::span<const char*> arguments)
                 ++i;
             }
             else
-                throw std::runtime_error { "run: --directory: Missing parameter." };
+                throw std::runtime_error { std::format("run: {:s}: Missing parameter.", option_directory.name) };
         }
         else if (argument == option_help)
             return help_subcommand("run"sv);
@@ -231,7 +230,7 @@ int run(std::span<const char*> arguments)
                 ++i;
             }
             else
-                throw std::runtime_error { "run: --compiler_path: Missing parameter." };
+                throw std::runtime_error { std::format("run: {:s}: Missing parameter.", option_compiler_path.name) };
         }
         else if (argument == option_in_memory)
         {
@@ -247,7 +246,7 @@ int run(std::span<const char*> arguments)
             break;
         }
         else if (!model_path.empty())
-            throw std::runtime_error { std::format("run: Unknown parameter \"{:s}\".\n\nIf you want to pass arguments to the compiler, put `--` before them.", arguments[i]) };
+            throw std::runtime_error { std::format("run: Unknown parameter `{:s}`.\n\nIf you want to pass arguments to the compiler, put `--` before them.", arguments[i]) };
         else
             model_path = arguments[i];
     }
@@ -299,7 +298,7 @@ int clean(std::span<const char*> arguments)
         else if (argument == option_help)
             return help_subcommand("clean"sv);
         else if (!model_path.empty())
-            throw std::runtime_error { std::format(R"(clean: Unknown parameter "{:s}".)", arguments[i]) };
+            throw std::runtime_error { std::format("clean: Unknown parameter `{:s}`.", arguments[i]) };
         else
             model_path = arguments[i];
     }
@@ -320,10 +319,7 @@ int help_subcommand(std::span<const char*> arguments)
         return print_help(arguments);
 
     if (arguments.size() > 1)
-    {
-        std::println(std::cerr, "Error: Too many arguments for command `help`.");
-        return EXIT_FAILURE;
-    }
+        throw std::runtime_error { std::format("Too many arguments for command `help`.") };
 
     return help_subcommand(arguments.front());
 }
@@ -334,15 +330,11 @@ int help_subcommand(std::string_view subcommand)
         { return command.option.name == subcommand; });
 
     if (command == commands.end())
-    {
-        std::println(std::cerr, "Error: help: Unknown command `{:s}`.", subcommand);
-
-        return EXIT_FAILURE;
-    }
+        throw std::runtime_error { std::format("help: Unknown command `{:s}`.", subcommand) };
 
     std::println("{}", command->option.help);
 
-    std::println("\nUsage: ./{:s} {:s} <MODEL> <ARGUMENTS>", config::executable_name, command->option.name);
+    std::println("\n{:s}{:s}Usage{:s}: ./{:s} {:s} <MODEL> <ARGUMENTS>", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), config::executable_name, command->option.name);
 
     const auto largest_option = std::ranges::max_element(command->options,
         {}, [](const Option& option)
@@ -351,7 +343,7 @@ int help_subcommand(std::string_view subcommand)
 
     if (!command->options.empty())
     {
-        std::println("\nOptions:");
+        std::println("\n{:s}{:s}Options{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
         for (const auto& option : command->options)
             std::println("  {}, {:<{}}  {}", option.short_name, option.name, largest_option, option.help);
     }
@@ -373,13 +365,13 @@ int print_help(std::span<const char*> /* unused */)
 
     std::println("{:s} is a mutation test tool for MiniZinc models.", config::project_fancy_name);
 
-    std::println("\nUsage: ./{:s} [COMMAND]\n\nCommands:", config::executable_name);
+    std::println("\n{0:}{1:}Usage{2:}: ./{3:s} [COMMAND]\n\n{0:}{1:}Commands{2:}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), config::executable_name);
 
     for (const auto& command : commands | std::views::filter([](const auto& command)
                                    { return !command.is_option(); }))
         std::println("  {:<{}}  {}", command.option.name, largest_command, command.option.help);
 
-    std::println("\nOptions:");
+    std::println("\n{}{}Options{}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
     for (const auto& option : commands | std::views::filter([](const auto& option)
                                   { return option.is_option(); }))
         std::println("  {}, {:<{}}  {}", option.option.short_name, option.option.name, largest_option, option.option.help);
@@ -415,9 +407,7 @@ int parse_arguments(std::span<const char*> args)
 
         // If we have reached this point, we have found an argument that does not match
         // our commands or our global arguments.
-        std::println(std::cerr, "Error: Unknown command or option `{:s}`.", arg);
-
-        return EXIT_FAILURE;
+        throw std::runtime_error { std::format("Unknown command or option `{:s}`.", arg) };
     }
 
     return print_help(args);
