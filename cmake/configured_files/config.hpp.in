@@ -6,7 +6,8 @@
 namespace config
 {
 
-inline constexpr std::string_view project_name = "@PROJECT_NAME@";
+inline constexpr std::string_view executable_name = "@PROJECT_NAME@";
+inline constexpr std::string_view project_fancy_name = "@PROJECT_FANCY_NAME@";
 inline constexpr std::string_view project_version = "@PROJECT_VERSION@";
 inline constexpr int project_version_major { @PROJECT_VERSION_MAJOR@ };
 inline constexpr int project_version_minor { @PROJECT_VERSION_MINOR@ };

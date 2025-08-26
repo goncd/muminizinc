@@ -415,7 +415,7 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     const auto [original_program_exit_code, original_program_result] = run_program(ctx, compiler_path, program_arguments, m_memory.empty() ? std::string {} : m_memory.front().second);
 
     if (original_program_exit_code != EXIT_SUCCESS)
-        throw std::runtime_error { std::format("run: Could not execute the original program:\n{:s}", original_program_result) };
+        throw std::runtime_error { std::format("run: Could not execute the original model:\n{:s}", original_program_result) };
 
     const auto handle_output = [&original_program_result](std::string_view mutant_name, int mutant_exit_code, std::string_view mutant_output)
     {

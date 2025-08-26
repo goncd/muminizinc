@@ -104,7 +104,7 @@ constexpr std::array commands {
         .option {
             .name = "analyse",
             .short_name = {},
-            .help = "Analyses the given MiniZinc program" },
+            .help = "Analyses the given MiniZinc model" },
         .operation = analyse,
         .options = analyse_parameters },
     Command {
@@ -342,7 +342,7 @@ int help_subcommand(std::string_view subcommand)
 
     std::println("{}", command->option.help);
 
-    std::println("\nUsage: ./muminizinc {} <MODEL> <ARGUMENTS>", command->option.name);
+    std::println("\nUsage: ./{:s} {:s} <MODEL> <ARGUMENTS>", config::executable_name, command->option.name);
 
     const auto largest_option = std::ranges::max_element(command->options,
         {}, [](const Option& option)
@@ -371,9 +371,9 @@ int print_help(std::span<const char*> /* unused */)
         { return !command.is_option() ? std::size_t {} : command.option.name.length(); })
                                                ->option.name.length();
 
-    std::println("MuMiniZinc is a mutation test tool for MiniZinc programs.");
+    std::println("{:s} is a mutation test tool for MiniZinc models.", config::project_fancy_name);
 
-    std::println("\nUsage: ./muminizinc [COMMAND]\n\nCommands:");
+    std::println("\nUsage: ./{:s} [COMMAND]\n\nCommands:", config::executable_name);
 
     for (const auto& command : commands | std::views::filter([](const auto& command)
                                    { return !command.is_option(); }))
@@ -389,7 +389,7 @@ int print_help(std::span<const char*> /* unused */)
 
 int print_version(std::span<const char*> /* unused */)
 {
-    std::println("MuMiniZinc {:s}\nBuilt with MiniZinc {:s}.{:s}.{:s}", config::project_version, MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
+    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}.{:s}.{:s}", config::project_fancy_name, config::project_version, MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
 
     if constexpr (config::is_debug_build)
         std::println("\nDebug build.");

@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.30)
 
-SET(PROJECT_NAME muminizinc)
+SET(PROJECT_FANCY_NAME MuMiniZinc)
+string(TOLOWER ${PROJECT_FANCY_NAME} PROJECT_NAME)
 
 project(
   ${PROJECT_NAME}
   VERSION 0.0.1
-  DESCRIPTION "MuMiniZinc"
   LANGUAGES CXX)
 
 file(GLOB SOURCE
