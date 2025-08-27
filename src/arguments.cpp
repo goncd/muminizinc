@@ -1,4 +1,3 @@
-
 #include <arguments.hpp>
 
 #include <algorithm>   // std::ranges::find_if
@@ -10,6 +9,7 @@
 #include <span>        // std::span
 #include <stdexcept>   // std::runtime_error
 #include <string_view> // std::string_view
+#include <vector>      // std::vector
 
 #include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
 
@@ -20,9 +20,10 @@
 #include <build/config.hpp> // config::project_version
 #include <logging.hpp>      // logging::code, logging::Color, logging::Style
 #include <mutation.hpp>     // MutationModel
+
 using namespace std::string_view_literals;
 
-using command_pointer = int (*)(std::span<const char*>);
+using command_pointer = int (*)(std::span<std::string_view>);
 
 struct Option
 {
@@ -48,13 +49,11 @@ namespace
     return option.name == rhs || option.short_name == rhs;
 }
 
-int analyse(std::span<const char*> arguments);
-int run(std::span<const char*> arguments);
-int clean(std::span<const char*> arguments);
-int help_subcommand(std::span<const char*> arguments);
-int help_subcommand(std::string_view subcommand);
-int print_help(std::span<const char*> arguments);
-int print_version(std::span<const char*> arguments);
+int analyse(std::span<std::string_view> arguments);
+int run(std::span<std::string_view> arguments);
+int clean(std::span<std::string_view> arguments);
+int help_subcommand(std::span<std::string_view> arguments);
+int print_help();
 
 constexpr Option option_directory {
     .name = "--directory",
@@ -70,288 +69,112 @@ constexpr Option option_help {
 
 constexpr Option option_compiler_path {
     .name = "--compiler-path",
-    .short_name = "-c",
+    .short_name = "-p",
     .help = "The path of the MiniZinc compiler. By default it's `minizinc`"
 };
 
 constexpr Option option_in_memory {
     .name = "--in-memory",
     .short_name = "-m",
-    .help = "Runs the command in memory, without reading or writing files",
+    .help = "Runs the command entirely in memory, without reading or writing files",
+};
+
+constexpr Option option_color {
+    .name = "--color",
+    .short_name = "-c",
+    .help = R"(Enables color output with "true" or disables it with "false". By default it's automatic)",
 };
 
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
-    option_in_memory
+    option_in_memory,
+    option_color
 };
 
 constexpr std::array run_parameters {
     option_directory,
     option_compiler_path,
     option_help,
-    option_in_memory
+    option_in_memory,
+    option_color
 };
 
 constexpr std::array clean_parameters {
     option_directory,
-    option_help
+    option_help,
+    option_color
+};
+
+constexpr Command command_analyse {
+    .option {
+        .name = "analyse",
+        .short_name = {},
+        .help = "Analyses the given MiniZinc model" },
+    .operation = analyse,
+    .options = analyse_parameters
+};
+
+constexpr Command command_run {
+    .option {
+        .name = "run",
+        .short_name = {},
+        .help = "Runs all the mutants" },
+    .operation = run,
+    .options = run_parameters
+};
+
+constexpr Command command_clean {
+    .option {
+        .name = "clean",
+        .short_name = {},
+        .help = "Cleans the working directory for a model" },
+    .operation = clean,
+    .options = clean_parameters
+};
+
+constexpr Command command_help {
+    .option {
+        .name = "help",
+        .short_name = {},
+        .help = "Print this message or the help of the given subcommand" },
+    .operation = help_subcommand,
+    .options = {}
+};
+
+constexpr Command command_help_option {
+    .option = option_help,
+    .operation = nullptr,
+    .options = {}
+};
+
+constexpr Command command_version {
+    .option {
+        .name = "--version",
+        .short_name = "-v",
+        .help = "Prints the version" },
+    .operation = nullptr,
+    .options = {}
+};
+
+constexpr Command command_color_option {
+
+    .option = option_color,
+    .operation = nullptr,
+    .options = {}
 };
 
 constexpr std::array commands {
-    Command {
-        .option {
-            .name = "analyse",
-            .short_name = {},
-            .help = "Analyses the given MiniZinc model" },
-        .operation = analyse,
-        .options = analyse_parameters },
-    Command {
-        .option {
-            .name = "run",
-            .short_name = {},
-            .help = "Runs all the mutants" },
-        .operation = run,
-        .options = run_parameters },
-    Command {
-        .option {
-            .name = "clean",
-            .short_name = {},
-            .help = "Cleans the working directory for a model" },
-        .operation = clean,
-        .options = clean_parameters },
-    Command {
-        .option {
-            .name = "help",
-            .short_name = {},
-            .help = "Print this message or the help of the given subcommand" },
-        .operation = help_subcommand,
-        .options = {} },
-    Command {
-        .option = option_help,
-        .operation = print_help,
-        .options = {} },
-    Command {
-        .option {
-            .name = "--version",
-            .short_name = "-v",
-            .help = "Prints the version" },
-        .operation = print_version,
-        .options = {} }
+    command_analyse,
+    command_run,
+    command_clean,
+    command_help,
+    command_help_option,
+    command_version,
+    command_color_option
 };
 
-int analyse(std::span<const char*> arguments)
-{
-    std::string_view model_path {};
-    std::string_view output_directory {};
-    bool in_memory = false;
-
-    for (std::size_t i { 0 }; i < arguments.size(); ++i)
-    {
-        const std::string_view argument { arguments[i] };
-
-        if (argument == option_directory)
-        {
-            if (in_memory)
-                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_directory.name, option_in_memory.name) };
-
-            if (i + 1 < arguments.size())
-            {
-                output_directory = arguments[i + 1];
-                ++i;
-            }
-            else
-                throw std::runtime_error { std::format("analyse: {:s}: Missing parameter.", option_directory.name) };
-        }
-        else if (argument == option_help)
-            return help_subcommand("analyse"sv);
-        else if (argument == option_in_memory)
-        {
-            if (!output_directory.empty())
-                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_in_memory.name, option_directory.name) };
-
-            in_memory = true;
-        }
-        else if (!model_path.empty())
-            throw std::runtime_error { std::format("analyse: Unknown parameter `{:s}`.", arguments[i]) };
-        else
-            model_path = arguments[i];
-    }
-
-    if (model_path.empty())
-        throw std::runtime_error { "analyse: Missing model path." };
-
-    if (in_memory)
-    {
-        MutationModel model { model_path };
-        model.find_mutants();
-    }
-    else
-    {
-        MutationModel model { model_path, output_directory };
-        model.find_mutants();
-    }
-
-    return EXIT_SUCCESS;
-}
-
-int run(std::span<const char*> arguments)
-{
-    std::string_view model_path {};
-    std::string_view output_directory {};
-    std::string_view compiler_path { "minizinc" };
-    std::span<const char*> remaining_args {};
-    bool in_memory { false };
-
-    for (std::size_t i { 0 }; i < arguments.size(); ++i)
-    {
-        const std::string_view argument { arguments[i] };
-
-        if (argument == option_directory)
-        {
-            if (in_memory)
-                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_directory.name, option_in_memory.name) };
-
-            if (i + 1 < arguments.size())
-            {
-                output_directory = arguments[i + 1];
-                ++i;
-            }
-            else
-                throw std::runtime_error { std::format("run: {:s}: Missing parameter.", option_directory.name) };
-        }
-        else if (argument == option_help)
-            return help_subcommand("run"sv);
-        else if (argument == option_compiler_path)
-        {
-            if (i + 1 < arguments.size())
-            {
-                compiler_path = arguments[i + 1];
-                ++i;
-            }
-            else
-                throw std::runtime_error { std::format("run: {:s}: Missing parameter.", option_compiler_path.name) };
-        }
-        else if (argument == option_in_memory)
-        {
-            if (!output_directory.empty())
-                throw std::runtime_error { std::format("run: {:s}: Argument not compatible with {:s}.", option_in_memory.name, option_directory.name) };
-
-            in_memory = true;
-        }
-        else if (argument == "--"sv)
-        {
-            remaining_args = arguments.subspan(i + 1);
-
-            break;
-        }
-        else if (!model_path.empty())
-            throw std::runtime_error { std::format("run: Unknown parameter `{:s}`.\n\nIf you want to pass arguments to the compiler, put `--` before them.", arguments[i]) };
-        else
-            model_path = arguments[i];
-    }
-
-    if (model_path.empty())
-        throw std::runtime_error { "run: Missing model path." };
-
-    const boost::filesystem::path executable_from_user { compiler_path };
-
-    const auto executable = boost::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
-
-    if (executable.empty())
-        throw std::runtime_error { std::format("run: Could not find the executable `{:s}`. Please add it to $PATH.", executable_from_user.c_str()) };
-
-    if (in_memory)
-    {
-        MutationModel model { model_path };
-        model.find_mutants();
-        model.run_mutants(executable, remaining_args);
-    }
-    else
-    {
-        const MutationModel model { model_path, output_directory };
-        model.run_mutants(executable, remaining_args);
-    }
-
-    return EXIT_SUCCESS;
-}
-
-int clean(std::span<const char*> arguments)
-{
-    std::string_view model_path {};
-    std::string_view output_directory {};
-
-    for (std::size_t i { 0 }; i < arguments.size(); ++i)
-    {
-        const std::string_view argument { arguments[i] };
-
-        if (argument == option_directory)
-        {
-            if (i + 1 < arguments.size())
-            {
-                output_directory = arguments[i + 1];
-                ++i;
-            }
-            else
-                throw std::runtime_error { "clean: --directory: Missing parameter." };
-        }
-        else if (argument == option_help)
-            return help_subcommand("clean"sv);
-        else if (!model_path.empty())
-            throw std::runtime_error { std::format("clean: Unknown parameter `{:s}`.", arguments[i]) };
-        else
-            model_path = arguments[i];
-    }
-
-    if (model_path.empty())
-        throw std::runtime_error { "clean: Missing model path." };
-
-    MutationModel model { model_path, output_directory };
-
-    model.clear_output_folder();
-
-    return EXIT_SUCCESS;
-}
-
-int help_subcommand(std::span<const char*> arguments)
-{
-    if (arguments.empty() || (arguments.size() == 2 && arguments[1] == option_help))
-        return print_help(arguments);
-
-    if (arguments.size() > 1)
-        throw std::runtime_error { std::format("Too many arguments for command `help`.") };
-
-    return help_subcommand(arguments.front());
-}
-
-int help_subcommand(std::string_view subcommand)
-{
-    const auto* const command = std::ranges::find_if(commands, [subcommand](const auto& command)
-        { return command.option.name == subcommand; });
-
-    if (command == commands.end())
-        throw std::runtime_error { std::format("help: Unknown command `{:s}`.", subcommand) };
-
-    std::println("{}", command->option.help);
-
-    std::println("\n{:s}{:s}Usage{:s}: ./{:s} {:s} <MODEL> <ARGUMENTS>", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), config::executable_name, command->option.name);
-
-    const auto largest_option = std::ranges::max_element(command->options,
-        {}, [](const Option& option)
-        { return option.name.length(); })
-                                    ->name.length();
-
-    if (!command->options.empty())
-    {
-        std::println("\n{:s}{:s}Options{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
-        for (const auto& option : command->options)
-            std::println("  {}, {:<{}}  {}", option.short_name, option.name, largest_option, option.help);
-    }
-
-    return EXIT_SUCCESS;
-}
-
-int print_help(std::span<const char*> /* unused */)
+int print_help()
 {
     static constexpr auto largest_command = std::ranges::max_element(commands,
         {}, [](const Command& command)
@@ -379,7 +202,211 @@ int print_help(std::span<const char*> /* unused */)
     return EXIT_SUCCESS;
 }
 
-int print_version(std::span<const char*> /* unused */)
+int help_subcommand(const Command& command)
+{
+    std::println("{}", command.option.help);
+
+    std::println("\n{:s}{:s}Usage{:s}: ./{:s} {:s} <MODEL> <ARGUMENTS>", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), config::executable_name, command.option.name);
+
+    const auto largest_option = std::ranges::max_element(command.options,
+        {}, [](const Option& option)
+        { return option.name.length(); });
+
+    if (largest_option != command.options.end())
+    {
+        std::println("\n{:s}{:s}Options{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
+        for (const auto& option : command.options)
+            std::println("  {}, {:<{}}  {}", option.short_name, option.name, largest_option->name.length(), option.help);
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int help_subcommand(std::span<std::string_view> arguments)
+{
+    if (arguments.empty() || (arguments.size() == 2 && arguments[1] == option_help))
+        return print_help();
+
+    if (arguments.size() > 1)
+        throw std::runtime_error { std::format("{:s}: Too many arguments.", command_help.option.name) };
+
+    const auto* const command = std::ranges::find_if(commands, [subcommand = arguments.front()](const auto& command)
+        { return command.option.name == subcommand; });
+
+    if (command == commands.end())
+        throw std::runtime_error { std::format("{:s}: Unknown command `{:s}`.", command_help.option.name, arguments.front()) };
+
+    return help_subcommand(*command);
+}
+
+int analyse(std::span<std::string_view> arguments)
+{
+    std::string_view model_path {};
+    std::string_view output_directory {};
+    bool in_memory = false;
+
+    for (std::size_t i { 0 }; i < arguments.size(); ++i)
+    {
+        if (arguments[i] == option_directory)
+        {
+            if (in_memory)
+                throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_analyse.option.name, option_directory.name, option_in_memory.name) };
+
+            if (i + 1 < arguments.size())
+            {
+                output_directory = arguments[i + 1];
+                ++i;
+            }
+            else
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_analyse.option.name, option_directory.name) };
+        }
+        else if (arguments[i] == option_help)
+            return help_subcommand(command_analyse);
+        else if (arguments[i] == option_in_memory)
+        {
+            if (!output_directory.empty())
+                throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_analyse.option.name, option_in_memory.name, option_directory.name) };
+
+            in_memory = true;
+        }
+        else if (!model_path.empty())
+            throw std::runtime_error { std::format("{:s}: Unknown parameter `{:s}`.", command_analyse.option.name, arguments[i]) };
+        else
+            model_path = arguments[i];
+    }
+
+    if (model_path.empty())
+        throw std::runtime_error { std::format("{:s}: Missing model path.", command_analyse.option.name) };
+
+    if (in_memory)
+    {
+        MutationModel model { model_path };
+        model.find_mutants();
+    }
+    else
+    {
+        MutationModel model { model_path, output_directory };
+        model.find_mutants();
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int run(std::span<std::string_view> arguments)
+{
+    std::string_view model_path {};
+    std::string_view output_directory {};
+    std::string_view compiler_path { "minizinc" };
+    std::span<std::string_view> remaining_args {};
+    bool in_memory { false };
+
+    for (std::size_t i { 0 }; i < arguments.size(); ++i)
+    {
+        if (arguments[i] == option_directory)
+        {
+            if (in_memory)
+                throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_directory.name, option_in_memory.name) };
+
+            if (i + 1 < arguments.size())
+            {
+                output_directory = arguments[i + 1];
+                ++i;
+            }
+            else
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_directory.name) };
+        }
+        else if (arguments[i] == option_help)
+            return help_subcommand(command_run);
+        else if (arguments[i] == option_compiler_path)
+        {
+            if (i + 1 < arguments.size())
+            {
+                compiler_path = arguments[i + 1];
+                ++i;
+            }
+            else
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_compiler_path.name) };
+        }
+        else if (arguments[i] == option_in_memory)
+        {
+            if (!output_directory.empty())
+                throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_in_memory.name, option_directory.name) };
+
+            in_memory = true;
+        }
+        else if (arguments[i] == "--"sv)
+        {
+            remaining_args = arguments.subspan(i + 1);
+
+            break;
+        }
+        else if (!model_path.empty())
+            throw std::runtime_error { std::format("{:s}: Unknown parameter `{:s}`.\n\nIf you want to pass arguments to the compiler, put `--` before them.", command_run.option.name, arguments[i]) };
+        else
+            model_path = arguments[i];
+    }
+
+    if (model_path.empty())
+        throw std::runtime_error { "run: Missing model path." };
+
+    const boost::filesystem::path executable_from_user { compiler_path };
+
+    const auto executable = boost::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
+
+    if (executable.empty())
+        throw std::runtime_error { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH.", command_run.option.name, executable_from_user.c_str()) };
+
+    if (in_memory)
+    {
+        MutationModel model { model_path };
+        model.find_mutants();
+        model.run_mutants(executable, remaining_args);
+    }
+    else
+    {
+        const MutationModel model { model_path, output_directory };
+        model.run_mutants(executable, remaining_args);
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int clean(std::span<std::string_view> arguments)
+{
+    std::string_view model_path {};
+    std::string_view output_directory {};
+
+    for (std::size_t i { 0 }; i < arguments.size(); ++i)
+    {
+        if (arguments[i] == option_directory)
+        {
+            if (i + 1 < arguments.size())
+            {
+                output_directory = arguments[i + 1];
+                ++i;
+            }
+            else
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_clean.option.name, option_directory.name) };
+        }
+        else if (arguments[i] == option_help)
+            return help_subcommand(command_clean);
+        else if (!model_path.empty())
+            throw std::runtime_error { std::format("{:s}: Unknown parameter `{:s}`.", command_clean.option.name, arguments[i]) };
+        else
+            model_path = arguments[i];
+    }
+
+    if (model_path.empty())
+        throw std::runtime_error { std::format("{:s}: Missing model path.", command_clean.option.name) };
+
+    MutationModel model { model_path, output_directory };
+
+    model.clear_output_folder();
+
+    return EXIT_SUCCESS;
+}
+
+int print_version()
 {
     std::println("{:s} {:s}\nBuilt with MiniZinc {:s}.{:s}.{:s}", config::project_fancy_name, config::project_version, MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
 
@@ -391,24 +418,63 @@ int print_version(std::span<const char*> /* unused */)
 
 }
 
-int parse_arguments(std::span<const char*> args)
+int parse_arguments(std::span<const char*> argv)
 {
-    if (args.size() < 2)
-        return print_help(args);
+    if (argv.size() < 2)
+        return print_help();
 
-    for (std::size_t i { 1 }; i < args.size(); ++i)
+    std::vector<std::string_view> arguments;
+
+    // Identify global toggles and remove them from the argument list.
+    for (std::size_t i { 1 }; i < argv.size(); ++i)
     {
-        const auto arg = std::string_view { args[i] };
+        const std::string_view argument { argv[i] };
 
+        if (argument == option_help && arguments.empty())
+            return print_help();
+
+        if (argument == command_version.option)
+            return print_version();
+
+        if (argument == option_color)
+        {
+            if (i + 1 < argv.size())
+            {
+                const std::string_view value { argv[i + 1] };
+
+                bool should_have_color = false;
+
+                if (value == "true"sv)
+                    should_have_color = true;
+                else if (value == "false"sv)
+                    should_have_color = false;
+                else
+                    throw std::runtime_error { std::format(R"({:s}: Unknown value `{:s}`. Valid values are "true" and "false".)", option_color.name, value) };
+
+                logging::have_color_stdout = logging::have_color_stderr = should_have_color;
+
+                ++i;
+            }
+            else
+                throw std::runtime_error { std::format("{:s}: Missing parameter.", option_color.name) };
+        }
+        else
+            arguments.emplace_back(argument);
+    }
+
+    const std::span arguments_span { arguments };
+
+    for (std::size_t i { 0 }; i < arguments_span.size(); ++i)
+    {
         for (const auto& command : commands)
-            if (arg == command.option)
+            if (arguments[i] == command.option)
                 // The command's options will be handled by itself.
-                return command.operation(args.subspan(i + 1));
+                return command.operation(arguments_span.subspan(i + 1));
 
         // If we have reached this point, we have found an argument that does not match
         // our commands or our global arguments.
-        throw std::runtime_error { std::format("Unknown command or option `{:s}`.", arg) };
+        throw std::runtime_error { std::format("Unknown command or option `{:s}`.", arguments[i]) };
     }
 
-    return print_help(args);
+    return print_help();
 }

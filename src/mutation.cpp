@@ -394,7 +394,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<const char*> compiler_arguments) const
+void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<std::string_view> compiler_arguments) const
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.string()) };
@@ -409,8 +409,8 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
 
     program_arguments.emplace_back(m_memory.empty() ? model_path : stdin_argument);
 
-    for (const auto* const argument : compiler_arguments)
-        program_arguments.emplace_back(argument);
+    for (const auto argument : compiler_arguments)
+        program_arguments.emplace_back(argument.begin(), argument.size());
 
     const auto [original_program_exit_code, original_program_result] = run_program(ctx, compiler_path, program_arguments, m_memory.empty() ? std::string {} : m_memory.front().second);
 

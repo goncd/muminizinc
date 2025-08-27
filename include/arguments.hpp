@@ -3,6 +3,6 @@
 
 #include <span> // std::span
 
-int parse_arguments(std::span<const char*> args);
+int parse_arguments(std::span<const char*> argv);
 
 #endif

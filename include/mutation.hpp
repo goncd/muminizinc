@@ -21,7 +21,7 @@ public:
 
     void clear_output_folder();
 
-    void run_mutants(const boost::filesystem::path& compiler_path, std::span<const char*> compiler_arguments) const;
+    void run_mutants(const boost::filesystem::path& compiler_path, std::span<std::string_view> compiler_arguments) const;
 
 private:
     class Mutator;
