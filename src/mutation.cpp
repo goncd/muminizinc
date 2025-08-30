@@ -1,6 +1,6 @@
 #include <mutation.hpp>
 
-#include <algorithm>   // std::ranges::find
+#include <algorithm>   // std::ranges::contains
 #include <array>       // std::array, std::end
 #include <cstdint>     // std::uint64_t
 #include <cstdlib>     // EXIT_SUCCESS
@@ -106,33 +106,37 @@ std::pair<int, std::string> run_program(boost::asio::io_context& ctx, const boos
 }
 }
 
+/*
+ * This actually does not override anything because MiniZinc::EVisitor does not have
+ * any virtual members, but we'll follow the convention. This is just static dispatching.
+ *
+ * The problem with this approach is that MiniZinc::EVisitor's visitors receive a pointer to
+ * const, which makes it impossible to actually alter the AST unless we `const_cast` away the
+ * const from the pointer. Of course, we know that the object is not actually const, so this is
+ * not undefined behavior. And, as we don't actually override anything, we can just have non-
+ * const arguments and the static dispatch will make it fail to compile in case we ever receive
+ * an actual const object as a parameter for any of the visitors.
+ *
+ * There is an alternative, which is to "override" the `enter` method, which receives a pointer
+ * to a non-cost expression object. Then, we can dynamically determine its type. The problem is
+ * that, for whatever reason, the `enter` method is called twice for many operators in the AST,
+ * which would yield duplicated mutants, so we can't do that.
+ */
 class MutationModel::Mutator : public MiniZinc::EVisitor
 {
 public:
     explicit Mutator(MutationModel& mutation_model);
 
-    bool enter(MiniZinc::Expression* expression)
-    {
-        if (auto* binOP = MiniZinc::Expression::dynamicCast<MiniZinc::BinOp>(expression))
-            detect_type_mutation(binOP);
-        else if (auto* unOP = MiniZinc::Expression::dynamicCast<MiniZinc::UnOp>(expression))
-            detect_type_mutation(unOP);
-        else if (auto* call = MiniZinc::Expression::dynamicCast<MiniZinc::Call>(expression))
-            detect_type_mutation(call);
-        else
-            logd("MutationModel::Mutator::enter: Unhandled expression {}", std::to_underlying(MiniZinc::Expression::eid(expression)));
+    void vBinOp(MiniZinc::BinOp* binOp);
 
-        return true;
-    }
+    void vUnOp(MiniZinc::UnOp* unOp);
+
+    void vCall(MiniZinc::Call* call);
 
     [[nodiscard]] auto generated_mutants() const noexcept { return mutation_BinOp_count + mutation_UnOp_count + mutation_Call_count; }
 
 private:
     MutationModel& m_mutation_model;
-
-    void detect_type_mutation(MiniZinc::BinOp* op);
-    void detect_type_mutation(MiniZinc::UnOp* op);
-    void detect_type_mutation(MiniZinc::Call* call);
 
     void perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators);
     std::uint64_t mutation_BinOp_count {};
@@ -147,36 +151,41 @@ private:
 MutationModel::Mutator::Mutator(MutationModel& mutation_model) :
     m_mutation_model { mutation_model } { }
 
-void MutationModel::Mutator::detect_type_mutation(MiniZinc::BinOp* op)
+void MutationModel::Mutator::vBinOp(MiniZinc::BinOp* binOp)
 {
-    logd("BinOP: Detected operation {}", op->opToString().c_str());
+    logd("vBinOP: Detected operation {}", binOp->opToString().c_str());
 
-    if (std::ranges::find(relational_operators, op->op()) != std::end(relational_operators))
-        perform_mutation(op, relational_operators);
-    else if (std::ranges::find(arithmetic_operators, op->op()) != std::end(arithmetic_operators))
-        perform_mutation(op, arithmetic_operators);
+    std::span<const MiniZinc::BinOpType> operators {};
+
+    if (std::ranges::contains(relational_operators, binOp->op()))
+        operators = relational_operators;
+    else if (std::ranges::contains(arithmetic_operators, binOp->op()))
+        operators = arithmetic_operators;
+
+    if (operators.empty())
+        logd("MutationModel::Mutator::vBinOp: Undetected mutation type");
     else
-        logd("BinOP: Undetected mutation type");
+        perform_mutation(binOp, operators);
 }
 
-void MutationModel::Mutator::detect_type_mutation(MiniZinc::UnOp* op)
+void MutationModel::Mutator::vUnOp(MiniZinc::UnOp* unOp)
 {
-    logd("UnOP: Detected operation {}", op->opToString().c_str());
+    logd("vUnOp: Detected operation {}", unOp->opToString().c_str());
 
-    if (std::ranges::find(unary_operators, op->op()) != std::end(unary_operators))
-        perform_mutation(op, unary_operators);
+    if (std::ranges::contains(unary_operators, unOp->op()))
+        perform_mutation(unOp, unary_operators);
     else
-        logd("UnOP: Undetected mutation type");
+        logd("MutationModel::Mutator::vUnOp: Undetected mutation type");
 }
 
-void MutationModel::Mutator::detect_type_mutation(MiniZinc::Call* call)
+void MutationModel::Mutator::vCall(MiniZinc::Call* call)
 {
-    logd("CallOP: Detected call to {}", call->id().c_str());
+    logd("vCall: Detected call to {}", call->id().c_str());
 
-    if (std::ranges::find(calls, call->id()) != std::end(calls))
+    if (std::ranges::contains(calls, call->id()))
         perform_mutation(call, calls);
     else
-        logd("CallOP: Unknown call");
+        logd("MutationModel::Mutator::vCall: Unhandled call operation");
 }
 
 void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators)
@@ -297,7 +306,7 @@ void MutationModel::clear_output_folder()
     if (m_mutation_folder_path.empty())
     {
         if (m_memory.empty())
-            throw std::runtime_error { "There is nothing to clear" };
+            throw std::runtime_error { "There is nothing to clear." };
 
         m_memory.clear();
     }
@@ -379,14 +388,14 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
             if (!mutant_name.empty())
                 throw std::runtime_error { "Trying to store a mutant when the original source hasn't been stored." };
 
-            m_memory.emplace_back(m_filename_stem, ostringstream.str());
+            m_memory.emplace_back(m_filename_stem, std::move(ostringstream).str());
         }
         else
         {
             if (mutant_name.empty())
                 throw std::runtime_error { "Trying to store the original source more than once." };
 
-            m_memory.emplace_back(mutant, ostringstream.str());
+            m_memory.emplace_back(mutant, std::move(ostringstream).str());
         }
     }
     else
