@@ -3,12 +3,13 @@
 #include <algorithm>   // std::ranges::find
 #include <array>       // std::array, std::end
 #include <cstdint>     // std::uint64_t
-#include <cstdlib>     // EXIT_FAILURE, EXIT_SUCCESS
+#include <cstdlib>     // EXIT_SUCCESS
 #include <filesystem>  // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
 #include <format>      // std::format
 #include <fstream>     // std::fstream
 #include <iostream>    // std::cerr, std::cout
 #include <print>       // std::println
+#include <ranges>      // std::views::drop
 #include <span>        // std::span
 #include <sstream>     // std::ostringstream
 #include <stdexcept>   // std::runtime_error
@@ -124,6 +125,8 @@ public:
         return true;
     }
 
+    [[nodiscard]] auto generated_mutants() const noexcept { return mutation_BinOp_count + mutation_UnOp_count + mutation_Call_count; }
+
 private:
     MutationModel& m_mutation_model;
 
@@ -183,8 +186,8 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<con
 
     if constexpr (config::is_debug_build)
     {
-        const auto& lhs = MiniZinc::Expression::loc(op->lhs());
-        const auto& rhs = MiniZinc::Expression::loc(op->rhs());
+        [[maybe_unused]] const auto& lhs = MiniZinc::Expression::loc(op->lhs());
+        [[maybe_unused]] const auto& rhs = MiniZinc::Expression::loc(op->rhs());
 
         logd("Mutating {}-{} to {}-{}. LHS: {}-{} to {}-{}. RHS: {}-{} to {}-{}",
             loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn(),
@@ -242,7 +245,7 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<co
 
     if constexpr (config::is_debug_build)
     {
-        const auto& loc = MiniZinc::Expression::loc(call);
+        [[maybe_unused]] const auto& loc = MiniZinc::Expression::loc(call);
 
         logd("Mutating {}-{} to {}-{}",
             loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn());
@@ -309,7 +312,7 @@ void MutationModel::clear_output_folder()
     std::filesystem::remove_all(m_mutation_folder_path);
 }
 
-void MutationModel::find_mutants()
+bool MutationModel::find_mutants()
 {
     MiniZinc::Env env;
 
@@ -344,6 +347,15 @@ void MutationModel::find_mutants()
         else if (const auto* outputI = item->dynamicCast<MiniZinc::OutputI>())
             MiniZinc::top_down(mutator, outputI->e());
     }
+
+    const auto generated_mutants = mutator.generated_mutants();
+
+    if (generated_mutants == 0)
+        std::println("Couldn't detect any mutants.");
+    else
+        std::println("\nGenerated {:s}{:d}{:s} mutants.", logging::code(logging::Color::Blue), generated_mutants, logging::code(logging::Style::Reset));
+
+    return generated_mutants != 0;
 }
 
 void MutationModel::save_current_model(std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id)
@@ -399,6 +411,9 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.string()) };
 
+    if (m_mutation_folder_path.empty() && m_memory.size() == 1)
+        throw std::runtime_error { "Couldn't run any mutants because there aren't any." };
+
     boost::asio::io_context ctx;
 
     std::vector<boost::string_view> program_arguments;
@@ -417,16 +432,27 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     if (original_program_exit_code != EXIT_SUCCESS)
         throw std::runtime_error { std::format("run: Could not execute the original model:\n{:s}", original_program_result) };
 
-    const auto handle_output = [&original_program_result](std::string_view mutant_name, int mutant_exit_code, std::string_view mutant_output)
+    std::uint64_t n_error {}, n_lives {}, n_dies {};
+
+    const auto handle_output = [&original_program_result, &n_error, &n_lives, &n_dies](std::string_view mutant_name, int mutant_exit_code, std::string_view mutant_output)
     {
         std::string_view result_string;
 
         if (mutant_exit_code != EXIT_SUCCESS)
+        {
+            ++n_error;
             result_string = "ERROR";
+        }
         else if (mutant_output == original_program_result)
+        {
+            ++n_lives;
             result_string = "LIVES";
+        }
         else
+        {
+            ++n_dies;
             result_string = "DIES";
+        }
 
         std::println("{:<20} {:<30}", mutant_name, result_string);
     };
@@ -438,10 +464,7 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
             const auto entry_stem = entry.path().stem();
 
             if (entry_stem == m_filename_stem)
-            {
-                std::println("{:<20} {:<30}", m_filename_stem, "IGNORED");
                 continue;
-            }
 
             if (entry.is_directory() || entry.path().extension() != EXTENSION || !entry.path().filename().string().starts_with(m_filename_stem))
                 throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
@@ -457,17 +480,13 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     }
     else
     {
-        for (const auto& [mutant_name, model] : m_memory)
+        for (const auto& [mutant_name, model] : m_memory | std::views::drop(1))
         {
-            if (mutant_name == m_filename_stem)
-            {
-                std::println("{:<20} {:<30}", mutant_name, "IGNORED");
-                continue;
-            }
-
             const auto [mutant_exit_code, mutant_output] = run_program(ctx, compiler_path, program_arguments, model);
 
             handle_output(mutant_name, mutant_exit_code, mutant_output);
         }
     }
+
+    std::println("\n{2:s}{3:s}Summary:{0:s}\n  Error:  {1:s}{4:d}{0:s}\n  Living: {1:s}{5:d}{0:s}\n  Dead:   {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_error, n_lives, n_dies);
 }

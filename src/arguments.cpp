@@ -25,6 +25,9 @@ using namespace std::string_view_literals;
 
 using command_pointer = int (*)(std::span<std::string_view>);
 
+namespace
+{
+
 struct Option
 {
     const std::string_view name;
@@ -41,9 +44,6 @@ struct Command
     [[nodiscard]] constexpr bool is_option() const noexcept { return option.name.starts_with("--"); };
 };
 
-namespace
-{
-
 [[nodiscard]] constexpr auto operator==(const Option& option, std::string_view rhs) noexcept
 {
     return option.name == rhs || option.short_name == rhs;
@@ -53,7 +53,6 @@ int analyse(std::span<std::string_view> arguments);
 int run(std::span<std::string_view> arguments);
 int clean(std::span<std::string_view> arguments);
 int help_subcommand(std::span<std::string_view> arguments);
-int print_help();
 
 constexpr Option option_directory {
     .name = "--directory",
@@ -158,7 +157,6 @@ constexpr Command command_version {
 };
 
 constexpr Command command_color_option {
-
     .option = option_color,
     .operation = nullptr,
     .options = {}
@@ -252,13 +250,11 @@ int analyse(std::span<std::string_view> arguments)
             if (in_memory)
                 throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_analyse.option.name, option_directory.name, option_in_memory.name) };
 
-            if (i + 1 < arguments.size())
-            {
-                output_directory = arguments[i + 1];
-                ++i;
-            }
-            else
+            if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_analyse.option.name, option_directory.name) };
+
+            output_directory = arguments[i + 1];
+            ++i;
         }
         else if (arguments[i] == option_help)
             return help_subcommand(command_analyse);
@@ -307,25 +303,21 @@ int run(std::span<std::string_view> arguments)
             if (in_memory)
                 throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_directory.name, option_in_memory.name) };
 
-            if (i + 1 < arguments.size())
-            {
-                output_directory = arguments[i + 1];
-                ++i;
-            }
-            else
+            if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_directory.name) };
+
+            output_directory = arguments[i + 1];
+            ++i;
         }
         else if (arguments[i] == option_help)
             return help_subcommand(command_run);
         else if (arguments[i] == option_compiler_path)
         {
-            if (i + 1 < arguments.size())
-            {
-                compiler_path = arguments[i + 1];
-                ++i;
-            }
-            else
+            if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_compiler_path.name) };
+
+            compiler_path = arguments[i + 1];
+            ++i;
         }
         else if (arguments[i] == option_in_memory)
         {
@@ -354,13 +346,14 @@ int run(std::span<std::string_view> arguments)
     const auto executable = boost::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
 
     if (executable.empty())
-        throw std::runtime_error { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH.", command_run.option.name, executable_from_user.c_str()) };
+        throw std::runtime_error { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH or provide its path using `{:s}.`", command_run.option.name, executable_from_user.c_str(), option_compiler_path.name) };
 
     if (in_memory)
     {
         MutationModel model { model_path };
-        model.find_mutants();
-        model.run_mutants(executable, remaining_args);
+
+        if (model.find_mutants())
+            model.run_mutants(executable, remaining_args);
     }
     else
     {
@@ -380,13 +373,11 @@ int clean(std::span<std::string_view> arguments)
     {
         if (arguments[i] == option_directory)
         {
-            if (i + 1 < arguments.size())
-            {
-                output_directory = arguments[i + 1];
-                ++i;
-            }
-            else
+            if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_clean.option.name, option_directory.name) };
+
+            output_directory = arguments[i + 1];
+            ++i;
         }
         else if (arguments[i] == option_help)
             return help_subcommand(command_clean);
@@ -438,25 +429,23 @@ int parse_arguments(std::span<const char*> argv)
 
         if (argument == option_color)
         {
-            if (i + 1 < argv.size())
-            {
-                const std::string_view value { argv[i + 1] };
-
-                bool should_have_color = false;
-
-                if (value == "true"sv)
-                    should_have_color = true;
-                else if (value == "false"sv)
-                    should_have_color = false;
-                else
-                    throw std::runtime_error { std::format(R"({:s}: Unknown value `{:s}`. Valid values are "true" and "false".)", option_color.name, value) };
-
-                logging::have_color_stdout = logging::have_color_stderr = should_have_color;
-
-                ++i;
-            }
-            else
+            if (i + 1 >= argv.size())
                 throw std::runtime_error { std::format("{:s}: Missing parameter.", option_color.name) };
+
+            const std::string_view value { argv[i + 1] };
+
+            bool should_have_color = false;
+
+            if (value == "true"sv)
+                should_have_color = true;
+            else if (value == "false"sv)
+                should_have_color = false;
+            else
+                throw std::runtime_error { std::format(R"({:s}: Unknown value `{:s}`. Valid values are "true" and "false".)", option_color.name, value) };
+
+            logging::have_color_stdout = logging::have_color_stderr = should_have_color;
+
+            ++i;
         }
         else
             arguments.emplace_back(argument);
@@ -476,5 +465,6 @@ int parse_arguments(std::span<const char*> argv)
         throw std::runtime_error { std::format("Unknown command or option `{:s}`.", arguments[i]) };
     }
 
+    // If we have reached this point, we have found no commands to execute.
     return print_help();
 }

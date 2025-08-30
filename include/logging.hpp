@@ -2,7 +2,7 @@
 #define LOGGING_HPP
 
 #include <chrono>          // std::chrono::system_clock::now()
-#include <cstdio>          // stdin, stderr
+#include <cstdio>          // stdout, stderr
 #include <format>          // std::format, std::vformat, std::make_format_args
 #include <print>           // std::print
 #include <source_location> // std::source_location, std::source_location::current
