@@ -28,6 +28,8 @@ using command_pointer = int (*)(std::span<std::string_view>);
 namespace
 {
 
+constexpr auto end_of_options_token { "--"sv };
+
 struct Option
 {
     const std::string_view name;
@@ -326,7 +328,7 @@ int run(std::span<std::string_view> arguments)
 
             in_memory = true;
         }
-        else if (arguments[i] == "--"sv)
+        else if (arguments[i] == end_of_options_token)
         {
             remaining_args = arguments.subspan(i + 1);
 
@@ -446,6 +448,14 @@ int parse_arguments(std::span<const char*> argv)
             logging::have_color_stdout = logging::have_color_stderr = should_have_color;
 
             ++i;
+        }
+        else if (argument == end_of_options_token)
+        {
+            // We won't find any arguments after the delimiter.
+            for (std::size_t j { i }; j < argv.size(); ++j)
+                arguments.emplace_back(argv[j]);
+
+            break;
         }
         else
             arguments.emplace_back(argument);
