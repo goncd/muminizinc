@@ -8,6 +8,7 @@
 #include <format>      // std::format
 #include <fstream>     // std::fstream
 #include <iostream>    // std::cerr, std::cout
+#include <optional>    // std::optional
 #include <print>       // std::println
 #include <ranges>      // std::views::drop
 #include <span>        // std::span
@@ -43,6 +44,17 @@
 
 namespace
 {
+
+using namespace std::string_view_literals;
+
+constexpr auto EXTENSION { ".mzn"sv };
+constexpr auto WIDTH_PRINTER { 80 };
+constexpr auto SEPARATOR { '-' };
+
+constexpr auto RESULT_ALIVE { "0"sv };
+constexpr auto RESULT_DEAD { "1"sv };
+constexpr auto RESULT_INVALID { "2"sv };
+
 constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_LE,
     MiniZinc::BinOpType::BOT_LQ,
@@ -51,6 +63,8 @@ constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_EQ,
     MiniZinc::BinOpType::BOT_NQ,
 };
+
+constexpr auto relational_operators_name { "REL"sv };
 
 constexpr std::array arithmetic_operators {
     MiniZinc::BinOpType::BOT_PLUS,
@@ -62,15 +76,28 @@ constexpr std::array arithmetic_operators {
     MiniZinc::BinOpType::BOT_POW,
 };
 
+constexpr auto arithmetic_operators_name { "ART"sv };
+
 constexpr std::array unary_operators {
     MiniZinc::UnOpType::UOT_MINUS,
     MiniZinc::UnOpType::UOT_PLUS,
     // MiniZinc::UnOpType::UOT_NOT, (do we want to use this one?)
 };
 
+constexpr auto unary_operators_name { "UNA"sv };
+
 const std::array calls {
     MiniZinc::Constants::constants().ids.forall,
     MiniZinc::Constants::constants().ids.exists,
+};
+
+constexpr auto call_name { "CALL"sv };
+
+constexpr std::array mutant_help {
+    std::pair { relational_operators_name, "Relational operators"sv },
+    std::pair { arithmetic_operators_name, "Arithmetic operators"sv },
+    std::pair { unary_operators_name, "Unary operators"sv },
+    std::pair { call_name, "Function calls"sv }
 };
 
 std::pair<int, std::string> run_program(boost::asio::io_context& ctx, const boost::filesystem::path& compiler_path, std::span<boost::string_view> program_arguments, const std::string& stdin_string = {})
@@ -125,7 +152,7 @@ std::pair<int, std::string> run_program(boost::asio::io_context& ctx, const boos
 class MutationModel::Mutator : public MiniZinc::EVisitor
 {
 public:
-    explicit Mutator(MutationModel& mutation_model);
+    constexpr explicit Mutator(MutationModel& mutation_model) noexcept;
 
     void vBinOp(MiniZinc::BinOp* binOp);
 
@@ -133,47 +160,56 @@ public:
 
     void vCall(MiniZinc::Call* call);
 
-    [[nodiscard]] auto generated_mutants() const noexcept { return mutation_BinOp_count + mutation_UnOp_count + mutation_Call_count; }
+    [[nodiscard]] constexpr auto generated_mutants() const noexcept { return m_mutation_BinOp_count + m_mutation_UnOp_count + m_mutation_Call_count; }
 
 private:
     MutationModel& m_mutation_model;
 
-    void perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators);
-    std::uint64_t mutation_BinOp_count {};
+    void perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name);
+    std::uint64_t m_mutation_BinOp_count {};
 
-    void perform_mutation(MiniZinc::UnOp* op, std::span<const MiniZinc::UnOpType> operators);
-    std::uint64_t mutation_UnOp_count {};
+    void perform_mutation(MiniZinc::UnOp* op, std::span<const MiniZinc::UnOpType> operators, std::string_view operator_name);
+    std::uint64_t m_mutation_UnOp_count {};
 
-    void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls);
-    std::uint64_t mutation_Call_count {};
+    void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls, std::string_view operator_name);
+    std::uint64_t m_mutation_Call_count {};
 };
 
-MutationModel::Mutator::Mutator(MutationModel& mutation_model) :
-    m_mutation_model { mutation_model } { }
+constexpr MutationModel::Mutator::Mutator(MutationModel& mutation_model) noexcept :
+    m_mutation_model { mutation_model }
+{
+}
 
 void MutationModel::Mutator::vBinOp(MiniZinc::BinOp* binOp)
 {
     logd("vBinOP: Detected operation {}", binOp->opToString().c_str());
 
-    std::span<const MiniZinc::BinOpType> operators {};
+    std::span<const MiniZinc::BinOpType> operators;
+    std::string_view operator_name;
 
     if (std::ranges::contains(relational_operators, binOp->op()))
+    {
+        operator_name = relational_operators_name;
         operators = relational_operators;
+    }
     else if (std::ranges::contains(arithmetic_operators, binOp->op()))
+    {
+        operator_name = arithmetic_operators_name;
         operators = arithmetic_operators;
+    }
 
     if (operators.empty())
         logd("MutationModel::Mutator::vBinOp: Undetected mutation type");
-    else
-        perform_mutation(binOp, operators);
+    else if (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, operator_name))
+        perform_mutation(binOp, operators, operator_name);
 }
 
 void MutationModel::Mutator::vUnOp(MiniZinc::UnOp* unOp)
 {
     logd("vUnOp: Detected operation {}", unOp->opToString().c_str());
 
-    if (std::ranges::contains(unary_operators, unOp->op()))
-        perform_mutation(unOp, unary_operators);
+    if (std::ranges::contains(unary_operators, unOp->op()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, unary_operators_name)))
+        perform_mutation(unOp, unary_operators, unary_operators_name);
     else
         logd("MutationModel::Mutator::vUnOp: Undetected mutation type");
 }
@@ -182,13 +218,13 @@ void MutationModel::Mutator::vCall(MiniZinc::Call* call)
 {
     logd("vCall: Detected call to {}", call->id().c_str());
 
-    if (std::ranges::contains(calls, call->id()))
-        perform_mutation(call, calls);
+    if (std::ranges::contains(calls, call->id()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, call_name)))
+        perform_mutation(call, calls, call_name);
     else
         logd("MutationModel::Mutator::vCall: Unhandled call operation");
 }
 
-void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators)
+void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name)
 {
     const auto original_operator = op->op();
     const auto& loc = MiniZinc::Expression::loc(op);
@@ -215,14 +251,14 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<con
 
         logd("Mutating to {}", op->opToString().c_str());
 
-        m_mutation_model.save_current_model("BinOP", mutation_BinOp_count++, occurrence_id++);
+        m_mutation_model.save_current_model(operator_name, m_mutation_BinOp_count++, occurrence_id++);
     }
 
     // Go back to the original for the next iteration.
     new (op) MiniZinc::BinOp(loc, op->lhs(), original_operator, op->rhs());
 }
 
-void MutationModel::Mutator::perform_mutation(MiniZinc::UnOp* op, std::span<const MiniZinc::UnOpType> operators)
+void MutationModel::Mutator::perform_mutation(MiniZinc::UnOp* op, std::span<const MiniZinc::UnOpType> operators, std::string_view operator_name)
 {
     const auto original_operator = op->op();
     const auto& loc = MiniZinc::Expression::loc(op);
@@ -241,14 +277,14 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::UnOp* op, std::span<cons
 
         logd("Mutating to {}", op->opToString().c_str());
 
-        m_mutation_model.save_current_model("UnOP", mutation_UnOp_count++, occurrence_id++);
+        m_mutation_model.save_current_model(operator_name, m_mutation_UnOp_count++, occurrence_id++);
     }
 
     // Go back to the original for the next iteration.
     new (op) MiniZinc::UnOp(loc, original_operator, op->e());
 }
 
-void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls)
+void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls, std::string_view operator_name)
 {
     const auto original_call = call->id();
 
@@ -271,15 +307,32 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<co
 
         call->id(candidate_call);
 
-        m_mutation_model.save_current_model("CALL", mutation_Call_count++, occurrence_id++);
+        m_mutation_model.save_current_model(operator_name, m_mutation_Call_count++, occurrence_id++);
     }
 
     call->id(original_call);
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path) :
-    m_model_path { std::filesystem::absolute(path) }
+MutationModel::MutationModel(const std::filesystem::path& path, std::span<const std::string_view> allowed_operators) :
+    m_model_path { std::filesystem::absolute(path) }, m_allowed_operators { allowed_operators }
 {
+    for (const auto mutant : m_allowed_operators)
+    {
+        bool found = false;
+
+        for (const auto& [name, _] : MutationModel::get_available_operators())
+        {
+            if (mutant == name)
+            {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+            throw std::runtime_error { std::format("Unknown mutant `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
+    }
+
     if (!std::filesystem::is_regular_file(m_model_path))
         throw std::runtime_error { "Could not open the requested file." };
 
@@ -289,8 +342,8 @@ MutationModel::MutationModel(const std::filesystem::path& path) :
     m_filename_stem = m_model_path.stem().generic_string();
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path, std::string_view output_directory) :
-    MutationModel { path }
+MutationModel::MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const std::string_view> allowed_operators) :
+    MutationModel { path, allowed_operators }
 {
     // Create the folder that will hold all the mutant code.
     // First, we need to determine the name of the folder.
@@ -315,7 +368,7 @@ void MutationModel::clear_output_folder()
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.string()) };
 
     for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
-        if (entry.is_directory() || entry.path().extension() != EXTENSION || !entry.path().filename().string().starts_with(m_filename_stem))
+        if (!get_stem_if_valid(entry))
             throw std::runtime_error { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
 
     std::filesystem::remove_all(m_mutation_folder_path);
@@ -372,7 +425,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     if (m_model == nullptr)
         throw std::runtime_error { "There is no model to print." };
 
-    const auto mutant = std::format("{:s}-{:s}-{:d}-{:d}", m_filename_stem, mutant_name, mutant_id, occurrence_id);
+    const auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_filename_stem, SEPARATOR, mutant_name, SEPARATOR, mutant_id, SEPARATOR, occurrence_id);
 
     if (!mutant_name.empty())
         std::println("Generating mutant `{:s}{:s}{:s}`", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset));
@@ -441,26 +494,26 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     if (original_program_exit_code != EXIT_SUCCESS)
         throw std::runtime_error { std::format("run: Could not execute the original model:\n{:s}", original_program_result) };
 
-    std::uint64_t n_error {}, n_lives {}, n_dies {};
+    std::uint64_t n_invalid {}, n_alive {}, n_dead {};
 
-    const auto handle_output = [&original_program_result, &n_error, &n_lives, &n_dies](std::string_view mutant_name, int mutant_exit_code, std::string_view mutant_output)
+    const auto handle_output = [&original_program_result, &n_invalid, &n_alive, &n_dead](std::string_view mutant_name, int mutant_exit_code, std::string_view mutant_output)
     {
         std::string_view result_string;
 
         if (mutant_exit_code != EXIT_SUCCESS)
         {
-            ++n_error;
-            result_string = "ERROR";
+            ++n_invalid;
+            result_string = RESULT_INVALID;
         }
         else if (mutant_output == original_program_result)
         {
-            ++n_lives;
-            result_string = "LIVES";
+            ++n_alive;
+            result_string = RESULT_ALIVE;
         }
         else
         {
-            ++n_dies;
-            result_string = "DIES";
+            ++n_dead;
+            result_string = RESULT_DEAD;
         }
 
         std::println("{:<20} {:<30}", mutant_name, result_string);
@@ -470,13 +523,25 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
     {
         for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         {
-            const auto entry_stem = entry.path().stem();
+            const auto opt = get_stem_if_valid(entry);
 
-            if (entry_stem == m_filename_stem)
+            if (!opt)
+                throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
+
+            if (*opt == m_filename_stem)
                 continue;
 
-            if (entry.is_directory() || entry.path().extension() != EXTENSION || !entry.path().filename().string().starts_with(m_filename_stem))
-                throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
+            if (!m_allowed_operators.empty())
+            {
+                std::string_view entry_view = *opt;
+
+                if (const auto pos = entry_view.find_first_not_of(m_filename_stem); pos != std::string_view::npos)
+                    entry_view = entry_view.substr(pos + 1);
+
+                if (std::ranges::none_of(m_allowed_operators, [entry_view](auto op)
+                        { return entry_view.contains(op); }))
+                    continue;
+            }
 
             const auto mutant_path = std::filesystem::absolute(entry).string();
 
@@ -484,7 +549,7 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
 
             const auto [mutant_exit_code, mutant_output] = run_program(ctx, compiler_path, program_arguments);
 
-            handle_output(entry_stem.string(), mutant_exit_code, mutant_output);
+            handle_output(*opt, mutant_exit_code, mutant_output);
         }
     }
     else
@@ -497,5 +562,23 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
         }
     }
 
-    std::println("\n{2:s}{3:s}Summary:{0:s}\n  Error:  {1:s}{4:d}{0:s}\n  Living: {1:s}{5:d}{0:s}\n  Dead:   {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_error, n_lives, n_dies);
+    std::println("\n{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
+}
+
+[[nodiscard]] std::span<const std::pair<std::string_view, std::string_view>> MutationModel::get_available_operators()
+{
+    return mutant_help;
+}
+
+std::optional<std::string> MutationModel::get_stem_if_valid(const std::filesystem::directory_entry& entry) const noexcept
+{
+    if (!entry.is_regular_file() || entry.path().extension() != EXTENSION)
+        return std::nullopt;
+
+    auto str = entry.path().stem().string();
+
+    if (str == m_filename_stem || (str.starts_with(m_filename_stem) && str.size() >= m_filename_stem.size() + 1 && str[m_filename_stem.size()] == SEPARATOR))
+        return str;
+
+    return std::nullopt;
 }

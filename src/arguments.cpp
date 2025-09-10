@@ -86,11 +86,20 @@ constexpr Option option_color {
     .help = R"(Enables color output with "true" or disables it with "false". By default it's automatic)",
 };
 
+constexpr Option option_operator {
+    .name = "--operator",
+    .short_name = "-o",
+    .help = "Only process the selected operator, or a comma-separated list of them"
+};
+
+constexpr auto option_operator_separator { ',' };
+
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
     option_in_memory,
-    option_color
+    option_color,
+    option_operator
 };
 
 constexpr std::array run_parameters {
@@ -98,7 +107,8 @@ constexpr std::array run_parameters {
     option_compiler_path,
     option_help,
     option_in_memory,
-    option_color
+    option_color,
+    option_operator
 };
 
 constexpr std::array clean_parameters {
@@ -174,6 +184,23 @@ constexpr std::array commands {
     command_color_option
 };
 
+void throw_operator_option_error(std::string_view name)
+{
+    std::string error_string = std::format("{:s}: {:s}: Missing parameter.\n\n{}{}Available operators{}:", name, option_operator.name, logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
+
+    const auto available_operators = MutationModel::get_available_operators();
+
+    const auto largest_operator = std::ranges::max_element(available_operators,
+        {}, [](const auto& element)
+        { return element.first; })
+                                      ->first.length();
+
+    for (const auto& [name, help] : MutationModel::get_available_operators())
+        error_string += std::format("\n  {:<{}}  {}", name, largest_operator + 2, help);
+
+    throw std::runtime_error { error_string };
+}
+
 int print_help()
 {
     static constexpr auto largest_command = std::ranges::max_element(commands,
@@ -241,13 +268,25 @@ int help_subcommand(std::span<std::string_view> arguments)
 
 int analyse(std::span<std::string_view> arguments)
 {
-    std::string_view model_path {};
-    std::string_view output_directory {};
+    std::string_view model_path;
+    std::string_view output_directory;
     bool in_memory = false;
+
+    std::vector<std::string_view> operators;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_directory)
+        if (arguments[i] == option_operator)
+        {
+            if (i + 1 >= arguments.size())
+                throw_operator_option_error(command_analyse.option.name);
+
+            for (const auto op : std::views::split(arguments[i + 1], option_operator_separator))
+                operators.emplace_back(op);
+
+            ++i;
+        }
+        else if (arguments[i] == option_directory)
         {
             if (in_memory)
                 throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_analyse.option.name, option_directory.name, option_in_memory.name) };
@@ -276,31 +315,35 @@ int analyse(std::span<std::string_view> arguments)
     if (model_path.empty())
         throw std::runtime_error { std::format("{:s}: Missing model path.", command_analyse.option.name) };
 
-    if (in_memory)
-    {
-        MutationModel model { model_path };
-        model.find_mutants();
-    }
-    else
-    {
-        MutationModel model { model_path, output_directory };
-        model.find_mutants();
-    }
+    auto model = in_memory ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
+
+    model.find_mutants();
 
     return EXIT_SUCCESS;
 }
 
 int run(std::span<std::string_view> arguments)
 {
-    std::string_view model_path {};
-    std::string_view output_directory {};
+    std::string_view model_path;
+    std::string_view output_directory;
     std::string_view compiler_path { "minizinc" };
-    std::span<std::string_view> remaining_args {};
+    std::span<std::string_view> remaining_args;
+    std::vector<std::string_view> operators;
     bool in_memory { false };
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_directory)
+        if (arguments[i] == option_operator)
+        {
+            if (i + 1 >= arguments.size())
+                throw_operator_option_error(command_run.option.name);
+
+            for (const auto op : std::views::split(arguments[i + 1], option_operator_separator))
+                operators.emplace_back(op);
+
+            ++i;
+        }
+        else if (arguments[i] == option_directory)
         {
             if (in_memory)
                 throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_directory.name, option_in_memory.name) };
@@ -352,14 +395,14 @@ int run(std::span<std::string_view> arguments)
 
     if (in_memory)
     {
-        MutationModel model { model_path };
+        MutationModel model { model_path, operators };
 
         if (model.find_mutants())
             model.run_mutants(executable, remaining_args);
     }
     else
     {
-        const MutationModel model { model_path, output_directory };
+        const MutationModel model { model_path, output_directory, operators };
         model.run_mutants(executable, remaining_args);
     }
 
