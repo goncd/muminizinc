@@ -23,7 +23,28 @@ public:
 
     void clear_output_folder();
 
-    void run_mutants(const boost::filesystem::path& compiler_path, std::span<std::string_view> compiler_arguments) const;
+    void clear_memory() noexcept;
+
+    struct Entry
+    {
+        enum class Status : std::uint8_t
+        {
+            Alive,
+            Dead,
+            Invalid
+        };
+
+        Entry(std::string name, std::string contents) noexcept :
+            name { std::move(name) }, contents { std::move(contents) } { }
+
+        std::string name;
+        std::string contents;
+
+        // The result of the mutant tested against every data file.
+        std::vector<Status> results;
+    };
+
+    [[nodiscard]] std::span<const Entry> run_mutants(const boost::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout);
 
     [[nodiscard]] static std::span<const std::pair<std::string_view, std::string_view>> get_available_operators();
 
@@ -37,7 +58,7 @@ private:
     MiniZinc::Model* m_model = nullptr;
 
     // It's guaranteed that the first element is the original mutant.
-    std::vector<std::pair<std::string, std::string>> m_memory;
+    std::vector<Entry> m_memory;
 
     std::span<const std::string_view> m_allowed_operators;
 

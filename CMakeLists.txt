@@ -11,7 +11,8 @@ project(
 file(GLOB SOURCE
     ${PROJECT_SOURCE_DIR}/src/arguments.cpp
     ${PROJECT_SOURCE_DIR}/src/main.cpp
-    ${PROJECT_SOURCE_DIR}/src/mutation.cpp)
+    ${PROJECT_SOURCE_DIR}/src/mutation.cpp
+    ${PROJECT_SOURCE_DIR}/src/executor.cpp)
 
 # Static analysis
 set(CMAKE_CXX_CLANG_TIDY "clang-tidy")

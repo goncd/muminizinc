@@ -21,14 +21,15 @@
 #include <logging.hpp>      // logging::code, logging::Color, logging::Style
 #include <mutation.hpp>     // MutationModel
 
-using namespace std::string_view_literals;
-
-using command_pointer = int (*)(std::span<std::string_view>);
-
 namespace
 {
 
+using command_pointer = int (*)(std::span<std::string_view>);
+
+using namespace std::string_view_literals;
+
 constexpr auto end_of_options_token { "--"sv };
+constexpr auto separator_arguments { ',' };
 
 struct Option
 {
@@ -92,7 +93,17 @@ constexpr Option option_operator {
     .help = "Only process the selected operator, or a comma-separated list of them"
 };
 
-constexpr auto option_operator_separator { ',' };
+constexpr Option option_timeout {
+    .name = "--timeout",
+    .short_name = "-t",
+    .help = "Run timeout in seconds. By default it's 10 seconds"
+};
+
+constexpr Option option_data {
+    .name = "--data",
+    .short_name = "-z",
+    .help = "Test all mutants against the specified data file, or a comma-separated list of them"
+};
 
 constexpr std::array analyse_parameters {
     option_directory,
@@ -108,7 +119,10 @@ constexpr std::array run_parameters {
     option_help,
     option_in_memory,
     option_color,
-    option_operator
+    option_operator,
+    option_timeout,
+    option_data,
+
 };
 
 constexpr std::array clean_parameters {
@@ -281,7 +295,7 @@ int analyse(std::span<std::string_view> arguments)
             if (i + 1 >= arguments.size())
                 throw_operator_option_error(command_analyse.option.name);
 
-            for (const auto op : std::views::split(arguments[i + 1], option_operator_separator))
+            for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
                 operators.emplace_back(op);
 
             ++i;
@@ -330,15 +344,44 @@ int run(std::span<std::string_view> arguments)
     std::span<std::string_view> remaining_args;
     std::vector<std::string_view> operators;
     bool in_memory { false };
+    std::uint64_t timeout_seconds { 10 };
+    std::uint64_t n_jobs { 0 };
+    std::vector<std::string_view> data_files;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_operator)
+        if (arguments[i] == option_data)
+        {
+            if (i + 1 >= arguments.size())
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_data.name) };
+
+            for (const auto path : std::views::split(arguments[i + 1], separator_arguments))
+                data_files.emplace_back(path);
+
+            ++i;
+        }
+        else if (arguments[i] == option_timeout)
+        {
+            if (i + 1 >= arguments.size())
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_timeout.name) };
+
+            const auto parameter { arguments[i + 1] };
+            auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), timeout_seconds);
+
+            if (ec == std::errc::invalid_argument)
+                throw std::runtime_error { "Invalid number." };
+
+            if (ec == std::errc::result_out_of_range)
+                throw std::runtime_error { "The specified number is too big." };
+
+            ++i;
+        }
+        else if (arguments[i] == option_operator)
         {
             if (i + 1 >= arguments.size())
                 throw_operator_option_error(command_run.option.name);
 
-            for (const auto op : std::views::split(arguments[i + 1], option_operator_separator))
+            for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
                 operators.emplace_back(op);
 
             ++i;
@@ -393,18 +436,46 @@ int run(std::span<std::string_view> arguments)
     if (executable.empty())
         throw std::runtime_error { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH or provide its path using `{:s}.`", command_run.option.name, executable_from_user.c_str(), option_compiler_path.name) };
 
-    if (in_memory)
-    {
-        MutationModel model { model_path, operators };
+    MutationModel model = (in_memory) ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
+    bool should_run = true;
 
-        if (model.find_mutants())
-            model.run_mutants(executable, remaining_args);
-    }
-    else
-    {
-        const MutationModel model { model_path, output_directory, operators };
-        model.run_mutants(executable, remaining_args);
-    }
+    if (in_memory)
+        should_run = model.find_mutants();
+
+    std::size_t n_invalid {}, n_alive {}, n_dead {};
+
+    if (should_run)
+        for (const auto& entry : model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }) | std::views::drop(1))
+        {
+            std::print("{:<{}}", entry.name, 30);
+
+            auto status = MutationModel::Entry::Status::Dead;
+
+            for (const auto value : entry.results)
+            {
+                std::print("{:d} ", std::to_underlying(value));
+
+                if (status == MutationModel::Entry::Status::Dead)
+                    status = value;
+            }
+
+            switch (status)
+            {
+            case MutationModel::Entry::Status::Alive:
+                ++n_alive;
+                break;
+            case MutationModel::Entry::Status::Dead:
+                ++n_dead;
+                break;
+            case MutationModel::Entry::Status::Invalid:
+                ++n_invalid;
+                break;
+            }
+
+            std::println();
+        }
+
+    std::println("\n{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
 
     return EXIT_SUCCESS;
 }

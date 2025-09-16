@@ -20,19 +20,9 @@
 #include <vector>      // std::vector
 
 #include <build/config.hpp> // config::is_debug_build
+#include <executor.hpp>     // MutantExecutor
 #include <logging.hpp>      // logd
 
-#include <boost/asio/buffer.hpp>             // boost::asio::buffer, boost::asio::dynamic_buffer
-#include <boost/asio/error.hpp>              // boost::asio::error::eof
-#include <boost/asio/io_context.hpp>         // boost::asio::io_context
-#include <boost/asio/read.hpp>               // boost::asio::read
-#include <boost/asio/readable_pipe.hpp>      // boost::asio::readable_pipe
-#include <boost/asio/writable_pipe.hpp>      // boost::asio::writable_pipe
-#include <boost/asio/write.hpp>              // boost::asio::write
-#include <boost/filesystem/path.hpp>         // boost::filesystem::path
-#include <boost/process/v2/process.hpp>      // boost::process::process
-#include <boost/process/v2/stdio.hpp>        // boost::process::process_stdio
-#include <boost/system/error_code.hpp>       // boost::system::error_code
 #include <boost/utility/string_view_fwd.hpp> // boost::string_view
 
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
@@ -50,10 +40,6 @@ using namespace std::string_view_literals;
 constexpr auto EXTENSION { ".mzn"sv };
 constexpr auto WIDTH_PRINTER { 80 };
 constexpr auto SEPARATOR { '-' };
-
-constexpr auto RESULT_ALIVE { "0"sv };
-constexpr auto RESULT_DEAD { "1"sv };
-constexpr auto RESULT_INVALID { "2"sv };
 
 constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_LE,
@@ -100,37 +86,6 @@ constexpr std::array mutant_help {
     std::pair { call_name, "Function calls"sv }
 };
 
-std::pair<int, std::string> run_program(boost::asio::io_context& ctx, const boost::filesystem::path& compiler_path, std::span<boost::string_view> program_arguments, const std::string& stdin_string = {})
-{
-    boost::asio::writable_pipe in_pipe { ctx };
-    boost::asio::readable_pipe out_pipe { ctx };
-    boost::asio::readable_pipe err_pipe { ctx };
-
-    boost::process::process proc(ctx,
-        compiler_path,
-        program_arguments, boost::process::process_stdio { .in = in_pipe, .out = out_pipe, .err = err_pipe });
-
-    boost::system::error_code error_code;
-
-    if (!stdin_string.empty())
-    {
-        boost::asio::write(in_pipe, boost::asio::buffer(stdin_string), error_code);
-        in_pipe.close();
-    }
-
-    std::string output_out;
-    std::string output_err;
-
-    boost::asio::read(out_pipe, boost::asio::dynamic_buffer(output_out), error_code);
-    boost::asio::read(err_pipe, boost::asio::dynamic_buffer(output_err), error_code);
-
-    if (error_code && !(error_code == boost::asio::error::eof))
-        throw std::runtime_error { "run: Cannot grab the output of the compiler." };
-
-    const auto status = proc.wait();
-
-    return { status, status == EXIT_SUCCESS ? output_out : output_err };
-}
 }
 
 /*
@@ -365,13 +320,18 @@ void MutationModel::clear_output_folder()
     }
 
     if (!std::filesystem::is_directory(m_mutation_folder_path))
-        throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.string()) };
+        throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
 
     for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         if (!get_stem_if_valid(entry))
             throw std::runtime_error { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
 
     std::filesystem::remove_all(m_mutation_folder_path);
+}
+
+void MutationModel::clear_memory() noexcept
+{
+    m_memory.clear();
 }
 
 bool MutationModel::find_mutants()
@@ -456,71 +416,39 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
         const auto path = (m_mutation_folder_path / (mutant_name.empty() ? m_filename_stem : mutant)).replace_extension(EXTENSION);
 
         if (std::filesystem::exists(path))
-            throw std::runtime_error { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.string()) };
+            throw std::runtime_error { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.native()) };
 
         auto file = std::ofstream(path);
 
         if (!file.is_open())
-            throw std::runtime_error { std::format(R"(Could not open the mutant file "{:s}")", path.string()) };
+            throw std::runtime_error { std::format(R"(Could not open the mutant file "{:s}")", path.native()) };
 
         MiniZinc::Printer printer(file, WIDTH_PRINTER, false);
         printer.print(m_model);
     }
 }
 
-void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<std::string_view> compiler_arguments) const
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
-        throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.string()) };
+        throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
 
     if (m_mutation_folder_path.empty() && m_memory.size() == 1)
         throw std::runtime_error { "Couldn't run any mutants because there aren't any." };
 
-    boost::asio::io_context ctx;
-
-    std::vector<boost::string_view> program_arguments;
-    program_arguments.reserve(compiler_arguments.size() + 1);
-
-    static constexpr boost::string_view stdin_argument { "-" };
-    const auto model_path = m_model_path.string();
-
-    program_arguments.emplace_back(m_memory.empty() ? model_path : stdin_argument);
-
-    for (const auto argument : compiler_arguments)
-        program_arguments.emplace_back(argument.begin(), argument.size());
-
-    const auto [original_program_exit_code, original_program_result] = run_program(ctx, compiler_path, program_arguments, m_memory.empty() ? std::string {} : m_memory.front().second);
-
-    if (original_program_exit_code != EXIT_SUCCESS)
-        throw std::runtime_error { std::format("run: Could not execute the original model:\n{:s}", original_program_result) };
-
-    std::uint64_t n_invalid {}, n_alive {}, n_dead {};
-
-    const auto handle_output = [&original_program_result, &n_invalid, &n_alive, &n_dead](std::string_view mutant_name, int mutant_exit_code, std::string_view mutant_output)
-    {
-        std::string_view result_string;
-
-        if (mutant_exit_code != EXIT_SUCCESS)
-        {
-            ++n_invalid;
-            result_string = RESULT_INVALID;
-        }
-        else if (mutant_output == original_program_result)
-        {
-            ++n_alive;
-            result_string = RESULT_ALIVE;
-        }
-        else
-        {
-            ++n_dead;
-            result_string = RESULT_DEAD;
-        }
-
-        std::println("{:<20} {:<30}", mutant_name, result_string);
-    };
-
     if (m_memory.empty())
     {
+        // Insert the original model first.
+        const std::ifstream ifstream { m_model_path };
+        std::stringstream buffer;
+        buffer << ifstream.rdbuf();
+
+        if (ifstream.bad())
+            throw std::runtime_error { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
+
+        m_memory.emplace_back(m_filename_stem, std::move(buffer).str());
+
+        // Insert all the mutants found in the folder, but skip the original model.
         for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         {
             const auto opt = get_stem_if_valid(entry);
@@ -543,26 +471,110 @@ void MutationModel::run_mutants(const boost::filesystem::path& compiler_path, st
                     continue;
             }
 
-            const auto mutant_path = std::filesystem::absolute(entry).string();
+            const std::ifstream ifstream { entry.path() };
+            std::stringstream buffer;
+            buffer << ifstream.rdbuf();
 
-            program_arguments.front() = mutant_path;
+            if (ifstream.bad())
+                throw std::runtime_error { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
 
-            const auto [mutant_exit_code, mutant_output] = run_program(ctx, compiler_path, program_arguments);
-
-            handle_output(*opt, mutant_exit_code, mutant_output);
+            m_memory.emplace_back(*std::move(opt), std::move(buffer).str());
         }
     }
+
+    // Set the arguments for the executable.
+    std::vector<boost::string_view> arguments;
+    arguments.reserve(compiler_arguments.size() + (data_files.empty() ? 1 : 2));
+
+    arguments.emplace_back("-");
+
+    for (const auto argument : compiler_arguments)
+        arguments.emplace_back(argument.begin(), argument.size());
+
+    if (!data_files.empty())
+        arguments.emplace_back();
+
+    std::vector<std::string> original_outputs;
+    original_outputs.resize(data_files.empty() ? 1 : data_files.size());
+
+    const auto n_data_files { std::max(data_files.size(), 1uz) };
+
+    Executor executor;
+
+    // First, just run the original model, so we can make sure it actually compiles and runs with all mutants.
+    m_memory.front().results.resize(n_data_files, MutationModel::Entry::Status::Alive);
+
+    const auto make_on_completion_original = [](std::string& str)
+    {
+        return [&str](int exit_code, std::string output)
+        {
+            if (exit_code != EXIT_SUCCESS)
+                throw std::runtime_error { std::format("Could not run the original model:\n{:s}", output) };
+
+            str = std::move(output);
+        };
+    };
+
+    const auto make_on_timeout_original = []
+    { return []
+      { throw std::runtime_error { "Timeout when trying to run the original model." }; }; };
+
+    if (data_files.empty())
+        executor.add_task(compiler_path, arguments, m_memory.front().contents, timeout, make_on_completion_original(original_outputs.front()), make_on_timeout_original());
     else
     {
-        for (const auto& [mutant_name, model] : m_memory | std::views::drop(1))
+        for (const auto [index, data_file] : std::ranges::views::enumerate(data_files))
         {
-            const auto [mutant_exit_code, mutant_output] = run_program(ctx, compiler_path, program_arguments, model);
+            arguments.back() = boost::string_view { data_file.begin(), data_file.size() };
 
-            handle_output(mutant_name, mutant_exit_code, mutant_output);
+            executor.add_task(compiler_path, arguments, m_memory.front().contents, timeout, make_on_completion_original(original_outputs[static_cast<std::size_t>(index)]), make_on_timeout_original());
         }
     }
 
-    std::println("\n{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
+    executor.run();
+
+    // Now, add all the mutants with all the data files and compare their outputs against the original model.
+    const auto make_on_completion = [](std::string_view original_output, MutationModel::Entry::Status& result)
+    {
+        return [original_output, &result](int exit_code, const std::string& output)
+        {
+            if (exit_code != EXIT_SUCCESS)
+                result = MutationModel::Entry::Status::Invalid;
+            else if (output == original_output)
+                result = MutationModel::Entry::Status::Alive;
+            else
+                result = MutationModel::Entry::Status::Dead;
+        };
+    };
+
+    const auto make_on_timeout = [](MutationModel::Entry::Status& result)
+    {
+        return [&result]
+        { result = MutationModel::Entry::Status::Dead; };
+    };
+
+    for (auto& mutant : m_memory | std::ranges::views::drop(1))
+    {
+        mutant.results.resize(n_data_files, MutationModel::Entry::Status::Alive);
+
+        if (data_files.empty())
+            executor.add_task(compiler_path, arguments, mutant.contents, timeout, make_on_completion(original_outputs.front(), mutant.results.front()), make_on_timeout(mutant.results.front()));
+        else
+        {
+            for (const auto [index, data_file] : std::ranges::views::enumerate(data_files))
+            {
+                arguments.back() = boost::string_view { data_file.begin(), data_file.size() };
+
+                const auto index_value = static_cast<std::size_t>(index);
+
+                executor.add_task(compiler_path, arguments, mutant.contents, timeout, make_on_completion(original_outputs[index_value], mutant.results[index_value]), make_on_timeout(mutant.results[index_value]));
+            }
+        }
+    }
+
+    executor.run();
+
+    return m_memory;
 }
 
 [[nodiscard]] std::span<const std::pair<std::string_view, std::string_view>> MutationModel::get_available_operators()
