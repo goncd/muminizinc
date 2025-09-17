@@ -2,28 +2,20 @@
 
 #include <algorithm>   // std::ranges::contains
 #include <array>       // std::array, std::end
+#include <chrono>      // std::chrono::seconds
 #include <cstdint>     // std::uint64_t
-#include <cstdlib>     // EXIT_SUCCESS
 #include <filesystem>  // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
 #include <format>      // std::format
 #include <fstream>     // std::fstream
 #include <iostream>    // std::cerr, std::cout
 #include <optional>    // std::optional
 #include <print>       // std::println
-#include <ranges>      // std::views::drop
 #include <span>        // std::span
 #include <sstream>     // std::ostringstream
 #include <stdexcept>   // std::runtime_error
 #include <string>      // std::string
 #include <string_view> // std::string_view
-#include <utility>     // std::pair
-#include <vector>      // std::vector
-
-#include <build/config.hpp> // config::is_debug_build
-#include <executor.hpp>     // MutantExecutor
-#include <logging.hpp>      // logd
-
-#include <boost/utility/string_view_fwd.hpp> // boost::string_view
+#include <utility>     // std::move, std::pair
 
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
@@ -31,6 +23,12 @@
 #include <minizinc/model.hh>         // MiniZinc::Env
 #include <minizinc/parser.hh>        // MiniZinc::parse
 #include <minizinc/prettyprinter.hh> // MiniZinc::Printer
+
+#include <boost/filesystem/path.hpp> // boost::filesystem::path
+
+#include <build/config.hpp> // config::is_debug_build
+#include <executor.hpp>     // MutantExecutor
+#include <logging.hpp>      // logd
 
 namespace
 {
@@ -428,7 +426,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-std::span<const MutationModel::Entry> MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout)
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
@@ -482,97 +480,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const boost::fi
         }
     }
 
-    // Set the arguments for the executable.
-    std::vector<boost::string_view> arguments;
-    arguments.reserve(compiler_arguments.size() + (data_files.empty() ? 1 : 2));
-
-    arguments.emplace_back("-");
-
-    for (const auto argument : compiler_arguments)
-        arguments.emplace_back(argument.begin(), argument.size());
-
-    if (!data_files.empty())
-        arguments.emplace_back();
-
-    std::vector<std::string> original_outputs;
-    original_outputs.resize(data_files.empty() ? 1 : data_files.size());
-
-    const auto n_data_files { std::max(data_files.size(), 1uz) };
-
-    Executor executor;
-
-    // First, just run the original model, so we can make sure it actually compiles and runs with all mutants.
-    m_memory.front().results.resize(n_data_files, MutationModel::Entry::Status::Alive);
-
-    const auto make_on_completion_original = [](std::string& str)
-    {
-        return [&str](int exit_code, std::string output)
-        {
-            if (exit_code != EXIT_SUCCESS)
-                throw std::runtime_error { std::format("Could not run the original model:\n{:s}", output) };
-
-            str = std::move(output);
-        };
-    };
-
-    const auto make_on_timeout_original = []
-    { return []
-      { throw std::runtime_error { "Timeout when trying to run the original model." }; }; };
-
-    if (data_files.empty())
-        executor.add_task(compiler_path, arguments, m_memory.front().contents, timeout, make_on_completion_original(original_outputs.front()), make_on_timeout_original());
-    else
-    {
-        for (const auto [index, data_file] : std::ranges::views::enumerate(data_files))
-        {
-            arguments.back() = boost::string_view { data_file.begin(), data_file.size() };
-
-            executor.add_task(compiler_path, arguments, m_memory.front().contents, timeout, make_on_completion_original(original_outputs[static_cast<std::size_t>(index)]), make_on_timeout_original());
-        }
-    }
-
-    executor.run();
-
-    // Now, add all the mutants with all the data files and compare their outputs against the original model.
-    const auto make_on_completion = [](std::string_view original_output, MutationModel::Entry::Status& result)
-    {
-        return [original_output, &result](int exit_code, const std::string& output)
-        {
-            if (exit_code != EXIT_SUCCESS)
-                result = MutationModel::Entry::Status::Invalid;
-            else if (output == original_output)
-                result = MutationModel::Entry::Status::Alive;
-            else
-                result = MutationModel::Entry::Status::Dead;
-        };
-    };
-
-    const auto make_on_timeout = [](MutationModel::Entry::Status& result)
-    {
-        return [&result]
-        { result = MutationModel::Entry::Status::Dead; };
-    };
-
-    for (auto& mutant : m_memory | std::ranges::views::drop(1))
-    {
-        mutant.results.resize(n_data_files, MutationModel::Entry::Status::Alive);
-
-        if (data_files.empty())
-            executor.add_task(compiler_path, arguments, mutant.contents, timeout, make_on_completion(original_outputs.front(), mutant.results.front()), make_on_timeout(mutant.results.front()));
-        else
-        {
-            for (const auto [index, data_file] : std::ranges::views::enumerate(data_files))
-            {
-                arguments.back() = boost::string_view { data_file.begin(), data_file.size() };
-
-                const auto index_value = static_cast<std::size_t>(index);
-
-                executor.add_task(compiler_path, arguments, mutant.contents, timeout, make_on_completion(original_outputs[index_value], mutant.results[index_value]), make_on_timeout(mutant.results[index_value]));
-            }
-        }
-    }
-
-    executor.run();
+    execute_mutants(compiler_path, compiler_arguments, data_files, m_memory, timeout, n_jobs);
 
     return m_memory;
 }

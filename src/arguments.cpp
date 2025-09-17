@@ -1,15 +1,19 @@
 #include <arguments.hpp>
 
-#include <algorithm>   // std::ranges::find_if
-#include <array>       // std::array
-#include <cstdlib>     // EXIT_SUCCESS
-#include <format>      // std::format
-#include <print>       // std::println
-#include <ranges>      // std::views::filter
-#include <span>        // std::span
-#include <stdexcept>   // std::runtime_error
-#include <string_view> // std::string_view
-#include <vector>      // std::vector
+#include <algorithm>    // std::ranges::find_if
+#include <array>        // std::array
+#include <charconv>     // std::from_chars
+#include <cstdint>      // std::uint64_t
+#include <cstdlib>      // EXIT_SUCCESS
+#include <format>       // std::format
+#include <print>        // std::println
+#include <ranges>       // std::views::filter
+#include <span>         // std::span
+#include <stdexcept>    // std::runtime_error
+#include <string_view>  // std::string_view
+#include <system_error> // std::errc
+#include <utility>      // std::to_underlying
+#include <vector>       // std::vector
 
 #include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
 
@@ -30,6 +34,8 @@ using namespace std::string_view_literals;
 
 constexpr auto end_of_options_token { "--"sv };
 constexpr auto separator_arguments { ',' };
+constexpr std::uint64_t default_timeout_seconds { 10 };
+constexpr std::uint64_t default_n_jobs { 0 }; // Unlimited jobs.
 
 struct Option
 {
@@ -105,6 +111,12 @@ constexpr Option option_data {
     .help = "Test all mutants against the specified data file, or a comma-separated list of them"
 };
 
+constexpr Option option_jobs {
+    .name = "--jobs",
+    .short_name = "-j",
+    .help = "The maximum number of concurrent execution jobs. A value of 0 (which is the default) makes it unlimited"
+};
+
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
@@ -122,7 +134,7 @@ constexpr std::array run_parameters {
     option_operator,
     option_timeout,
     option_data,
-
+    option_jobs
 };
 
 constexpr std::array clean_parameters {
@@ -200,7 +212,7 @@ constexpr std::array commands {
 
 void throw_operator_option_error(std::string_view name)
 {
-    std::string error_string = std::format("{:s}: {:s}: Missing parameter.\n\n{}{}Available operators{}:", name, option_operator.name, logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
+    auto error_string = std::format("{:s}: {:s}: Missing parameter.\n\n{}{}Available operators{}:", name, option_operator.name, logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
 
     const auto available_operators = MutationModel::get_available_operators();
 
@@ -285,7 +297,6 @@ int analyse(std::span<std::string_view> arguments)
     std::string_view model_path;
     std::string_view output_directory;
     bool in_memory = false;
-
     std::vector<std::string_view> operators;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
@@ -344,13 +355,29 @@ int run(std::span<std::string_view> arguments)
     std::span<std::string_view> remaining_args;
     std::vector<std::string_view> operators;
     bool in_memory { false };
-    std::uint64_t timeout_seconds { 10 };
-    std::uint64_t n_jobs { 0 };
+    std::uint64_t timeout_seconds { default_timeout_seconds };
+    std::uint64_t n_jobs { default_n_jobs };
     std::vector<std::string_view> data_files;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_data)
+        if (arguments[i] == option_jobs)
+        {
+            if (i + 1 >= arguments.size())
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_jobs.name) };
+
+            const auto parameter { arguments[i + 1] };
+            auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), n_jobs);
+
+            if (ec == std::errc::invalid_argument)
+                throw std::runtime_error { "Invalid number." };
+
+            if (ec == std::errc::result_out_of_range)
+                throw std::runtime_error { "The specified number is too big." };
+
+            ++i;
+        }
+        else if (arguments[i] == option_data)
         {
             if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_data.name) };
@@ -445,7 +472,7 @@ int run(std::span<std::string_view> arguments)
     std::size_t n_invalid {}, n_alive {}, n_dead {};
 
     if (should_run)
-        for (const auto& entry : model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }) | std::views::drop(1))
+        for (const auto& entry : model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs) | std::views::drop(1))
         {
             std::print("{:<{}}", entry.name, 30);
 
