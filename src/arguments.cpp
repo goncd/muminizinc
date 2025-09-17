@@ -6,8 +6,12 @@
 #include <cstdint>      // std::uint64_t
 #include <cstdlib>      // EXIT_SUCCESS
 #include <format>       // std::format
+#include <fstream>      // std::ofstream
+#include <iostream>     // std::cout
+#include <iterator>     // std::ostreambuf_iterator
+#include <optional>     // std::optional
 #include <print>        // std::println
-#include <ranges>       // std::views::filter
+#include <ranges>       // std::views::filter, std::views::split
 #include <span>         // std::span
 #include <stdexcept>    // std::runtime_error
 #include <string_view>  // std::string_view
@@ -95,7 +99,7 @@ constexpr Option option_color {
 
 constexpr Option option_operator {
     .name = "--operator",
-    .short_name = "-o",
+    .short_name = "-r",
     .help = "Only process the selected operator, or a comma-separated list of them"
 };
 
@@ -117,6 +121,12 @@ constexpr Option option_jobs {
     .help = "The maximum number of concurrent execution jobs. A value of 0 (which is the default) makes it unlimited"
 };
 
+constexpr Option option_output {
+    .name = "--output",
+    .short_name = "-o",
+    .help = "The path which the output will be redirected to"
+};
+
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
@@ -134,7 +144,8 @@ constexpr std::array run_parameters {
     option_operator,
     option_timeout,
     option_data,
-    option_jobs
+    option_jobs,
+    option_output
 };
 
 constexpr std::array clean_parameters {
@@ -355,13 +366,24 @@ int run(std::span<std::string_view> arguments)
     std::span<std::string_view> remaining_args;
     std::vector<std::string_view> operators;
     bool in_memory { false };
+    const char* output { nullptr };
     std::uint64_t timeout_seconds { default_timeout_seconds };
     std::uint64_t n_jobs { default_n_jobs };
     std::vector<std::string_view> data_files;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_jobs)
+        if (arguments[i] == option_output)
+        {
+            if (i + 1 >= arguments.size())
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_output.name) };
+
+            // This is safe because we know this comes from the argv array, whose strings are always null-terminated.
+            output = arguments[i + 1].data();
+
+            ++i;
+        }
+        else if (arguments[i] == option_jobs)
         {
             if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_jobs.name) };
@@ -463,6 +485,16 @@ int run(std::span<std::string_view> arguments)
     if (executable.empty())
         throw std::runtime_error { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH or provide its path using `{:s}.`", command_run.option.name, executable_from_user.c_str(), option_compiler_path.name) };
 
+    std::optional<std::ofstream> output_file;
+
+    if (output != nullptr)
+    {
+        output_file = std::ofstream { output };
+
+        if (!output_file->good())
+            throw std::runtime_error { std::format("Could not open the output file `{:s}`.", output) };
+    }
+
     MutationModel model = (in_memory) ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
     bool should_run = true;
 
@@ -471,16 +503,24 @@ int run(std::span<std::string_view> arguments)
 
     std::size_t n_invalid {}, n_alive {}, n_dead {};
 
+    const std::ostreambuf_iterator<char> output_stream { output_file.has_value() ? *output_file : std::cout };
+
     if (should_run)
-        for (const auto& entry : model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs) | std::views::drop(1))
+    {
+        if (in_memory)
+            std::println();
+
+        const auto entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs) | std::views::drop(1);
+
+        for (const auto& entry : entries)
         {
-            std::print("{:<{}}", entry.name, 30);
+            std::format_to(output_stream, "{:<{}}   ", entry.name, entries.back().name.size());
 
             auto status = MutationModel::Entry::Status::Dead;
 
             for (const auto value : entry.results)
             {
-                std::print("{:d} ", std::to_underlying(value));
+                std::format_to(output_stream, "{:d} ", std::to_underlying(value));
 
                 if (status == MutationModel::Entry::Status::Dead)
                     status = value;
@@ -499,10 +539,14 @@ int run(std::span<std::string_view> arguments)
                 break;
             }
 
-            std::println();
+            std::format_to(output_stream, "\n");
         }
+    }
 
-    std::println("\n{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
+    if (!output_file.has_value())
+        std::println();
+
+    std::println("{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
 
     return EXIT_SUCCESS;
 }

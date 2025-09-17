@@ -5,7 +5,9 @@
 #include <cstdint>     // std::uint64_t
 #include <cstdlib>     // EXIT_SUCCESS
 #include <format>      // std::format
+#include <iostream>    // std::cout
 #include <memory>      // std::make_unique
+#include <print>       // std::print
 #include <queue>       // std::queue
 #include <ranges>      // std::views::drop
 #include <span>        // std::span
@@ -29,6 +31,7 @@
 #include <boost/system/error_code.hpp>   // boost::system::error_code
 #include <boost/utility/string_view.hpp> // boost::string_view
 
+#include <logging.hpp>  // logging::code, logging::Style
 #include <mutation.hpp> // MutationModel::Entry
 
 namespace
@@ -51,12 +54,12 @@ struct MutantJob
 
 template<typename Job>
     requires std::is_same_v<Job, OriginalJob> || std::is_same_v<Job, MutantJob>
-void launch_process(boost::asio::io_context& ctx, const boost::filesystem::path& path, std::chrono::seconds timeout, std::queue<Job>& jobs, std::span<boost::string_view> arguments)
+void launch_process(boost::asio::io_context& ctx, const boost::filesystem::path& path, std::chrono::seconds timeout, std::queue<Job>& jobs, std::span<boost::string_view> arguments, std::uint64_t& completed_tasks, double total_tasks)
 {
     if (jobs.empty())
         return;
 
-    auto job = std::move(jobs.front());
+    const auto job = std::move(jobs.front());
     jobs.pop();
 
     if (!job.data_file.empty())
@@ -93,7 +96,7 @@ void launch_process(boost::asio::io_context& ctx, const boost::filesystem::path&
 
     auto* const process_ptr = process.get();
 
-    timer.async_wait([&ctx, &path, timeout, &jobs, arguments, process = std::move(process), job](boost::system::error_code ec)
+    timer.async_wait([&ctx, &path, timeout, &jobs, arguments, &completed_tasks, total_tasks, process = std::move(process), job](boost::system::error_code ec)
         {
             if (!ec)
             {
@@ -101,16 +104,20 @@ void launch_process(boost::asio::io_context& ctx, const boost::filesystem::path&
 
                 if constexpr(std::is_same_v<Job, OriginalJob>) {
                     throw std::runtime_error { "Timeout when trying to run the original model." };
-                    static_cast<void>(job); // Silence unused lambda capture on this path.
+                    static_cast<void>(job); // Silence the unused lambda capture warning on this path.
                 } else {
                     job.status = MutationModel::Entry::Status::Dead;
                 }
 
-                launch_process(ctx, path, timeout, jobs, arguments);
+                launch_process(ctx, path, timeout, jobs, arguments, completed_tasks, total_tasks);
             } });
 
-    process_ptr->async_wait([&ctx, &path, timeout, &jobs, arguments, timer = std::move(timer), out_pipe = std::move(out_pipe), err_pipe = std::move(err_pipe), job](boost::system::error_code ec, int exit_code) mutable
+    process_ptr->async_wait([&ctx, &path, timeout, &jobs, arguments, &completed_tasks, total_tasks, timer = std::move(timer), out_pipe = std::move(out_pipe), err_pipe = std::move(err_pipe), job](boost::system::error_code ec, int exit_code) mutable
         {
+            ++completed_tasks;
+            std::print("\r{:s}Progress{:s}: {:d} of {:g} execution{:s}({:0.2f}%)", logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), completed_tasks, total_tasks, total_tasks > 1 ? "s " : " ", static_cast<double>(completed_tasks) / total_tasks * 100);
+            std::cout.flush();
+
             // If an error occurred or we hit the timeout, don't do anything.
             if(ec)
                 return;
@@ -141,7 +148,7 @@ void launch_process(boost::asio::io_context& ctx, const boost::filesystem::path&
                     job.status = MutationModel::Entry::Status::Dead;
             }
 
-            launch_process(ctx, path, timeout, jobs, arguments); });
+            launch_process(ctx, path, timeout, jobs, arguments,completed_tasks, total_tasks); });
 }
 
 }
@@ -183,8 +190,12 @@ void execute_mutants(const boost::filesystem::path& path, std::span<const std::s
             original_jobs.emplace(models.front().contents, data_file, original_outputs[static_cast<std::size_t>(index)]);
     }
 
+    const std::uint64_t total_tasks { models.size() * original_outputs.size() };
+
+    std::uint64_t completed_tasks {};
+
     for (std::size_t i { 0 }; (n_jobs == 0 || i < n_jobs) && !original_jobs.empty(); ++i)
-        launch_process(ctx, path, timeout, original_jobs, arguments);
+        launch_process(ctx, path, timeout, original_jobs, arguments, completed_tasks, static_cast<double>(total_tasks));
 
     ctx.run();
 
@@ -210,11 +221,13 @@ void execute_mutants(const boost::filesystem::path& path, std::span<const std::s
         }
     }
 
-    for (std::size_t i { 0 }; (n_jobs == 0 || i < n_jobs) && !mutant_jobs.empty(); ++i)
-        launch_process(ctx, path, timeout, mutant_jobs, arguments);
+    for (std::size_t i {}; (n_jobs == 0 || i < n_jobs) && !mutant_jobs.empty(); ++i)
+        launch_process(ctx, path, timeout, mutant_jobs, arguments, completed_tasks, static_cast<double>(total_tasks));
 
     if (ctx.stopped())
         ctx.restart();
 
     ctx.run();
+
+    std::print("\n\n");
 }

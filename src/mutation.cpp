@@ -28,7 +28,7 @@
 
 #include <build/config.hpp> // config::is_debug_build
 #include <executor.hpp>     // MutantExecutor
-#include <logging.hpp>      // logd
+#include <logging.hpp>      // logd, logging::code, logging::Color, logging::Style
 
 namespace
 {
