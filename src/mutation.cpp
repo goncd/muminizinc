@@ -24,8 +24,6 @@
 #include <minizinc/parser.hh>        // MiniZinc::parse
 #include <minizinc/prettyprinter.hh> // MiniZinc::Printer
 
-#include <boost/filesystem/path.hpp> // boost::filesystem::path
-
 #include <build/config.hpp> // config::is_debug_build
 #include <executor.hpp>     // MutantExecutor
 #include <logging.hpp>      // logd, logging::code, logging::Color, logging::Style
@@ -426,7 +424,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-std::span<const MutationModel::Entry> MutationModel::run_mutants(const boost::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs)
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };

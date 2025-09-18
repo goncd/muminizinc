@@ -5,6 +5,7 @@
 #include <charconv>     // std::from_chars
 #include <cstdint>      // std::uint64_t
 #include <cstdlib>      // EXIT_SUCCESS
+#include <filesystem>   // std::filesystem::exists, std::filesystem::path
 #include <format>       // std::format
 #include <fstream>      // std::ofstream
 #include <iostream>     // std::cout
@@ -21,8 +22,6 @@
 
 #include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
 
-#include <boost/filesystem/operations.hpp>  // boost::filesystem::exists
-#include <boost/filesystem/path.hpp>        // boost::filesystem::path
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
 
 #include <build/config.hpp> // config::project_version
@@ -478,12 +477,12 @@ int run(std::span<std::string_view> arguments)
     if (model_path.empty())
         throw std::runtime_error { "run: Missing model path." };
 
-    const boost::filesystem::path executable_from_user { compiler_path };
+    const std::filesystem::path executable_from_user { compiler_path };
 
-    const auto executable = boost::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
+    const auto executable = std::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
 
     if (executable.empty())
-        throw std::runtime_error { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH or provide its path using `{:s}.`", command_run.option.name, executable_from_user.c_str(), option_compiler_path.name) };
+        throw std::runtime_error { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH or provide its path using `{:s}.`", command_run.option.name, executable_from_user.native(), option_compiler_path.name) };
 
     std::optional<std::ofstream> output_file;
 

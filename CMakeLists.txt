@@ -65,6 +65,8 @@ target_link_options(${PROJECT_NAME} PRIVATE
 find_package(libminizinc REQUIRED)
 find_package(Boost 1.88 REQUIRED COMPONENTS process)
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE BOOST_PROCESS_USE_STD_FS=1)
+
 target_link_libraries(${PROJECT_NAME} PRIVATE mzn)
 
 foreach(dir IN LISTS libminizinc_INCLUDE_DIRS)
