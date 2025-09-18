@@ -126,12 +126,19 @@ constexpr Option option_output {
     .help = "The path which the output will be redirected to"
 };
 
+constexpr Option option_include {
+    .name = "--include",
+    .short_name = "-I",
+    .help = "The include path. By default it will be searched on the directories above this executable"
+};
+
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
     option_in_memory,
     option_color,
-    option_operator
+    option_operator,
+    option_include
 };
 
 constexpr std::array run_parameters {
@@ -144,7 +151,8 @@ constexpr std::array run_parameters {
     option_timeout,
     option_data,
     option_jobs,
-    option_output
+    option_output,
+    option_include
 };
 
 constexpr std::array clean_parameters {
@@ -306,12 +314,22 @@ int analyse(std::span<std::string_view> arguments)
 {
     std::string_view model_path;
     std::string_view output_directory;
+    std::string_view include_path;
     bool in_memory = false;
     std::vector<std::string_view> operators;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_operator)
+        if (arguments[i] == option_include)
+        {
+            if (i + 1 >= arguments.size())
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_analyse.option.name, option_include.name) };
+
+            include_path = arguments[i + 1];
+
+            ++i;
+        }
+        else if (arguments[i] == option_operator)
         {
             if (i + 1 >= arguments.size())
                 throw_operator_option_error(command_analyse.option.name);
@@ -352,7 +370,7 @@ int analyse(std::span<std::string_view> arguments)
 
     auto model = in_memory ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
 
-    model.find_mutants();
+    model.find_mutants(std::string(include_path));
 
     return EXIT_SUCCESS;
 }
@@ -362,6 +380,7 @@ int run(std::span<std::string_view> arguments)
     std::string_view model_path;
     std::string_view output_directory;
     std::string_view compiler_path { "minizinc" };
+    std::string_view include_path;
     std::span<std::string_view> remaining_args;
     std::vector<std::string_view> operators;
     bool in_memory { false };
@@ -372,7 +391,16 @@ int run(std::span<std::string_view> arguments)
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_output)
+        if (arguments[i] == option_include)
+        {
+            if (i + 1 >= arguments.size())
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_include.name) };
+
+            include_path = arguments[i + 1];
+
+            ++i;
+        }
+        else if (arguments[i] == option_output)
         {
             if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_output.name) };
@@ -498,7 +526,7 @@ int run(std::span<std::string_view> arguments)
     bool should_run = true;
 
     if (in_memory)
-        should_run = model.find_mutants();
+        should_run = model.find_mutants(std::string { include_path });
 
     std::size_t n_invalid {}, n_alive {}, n_dead {};
 

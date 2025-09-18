@@ -20,6 +20,7 @@
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
 #include <minizinc/aststring.hh>     // MiniZinc::ASTString
+#include <minizinc/file_utils.hh>    // MiniZinc::FileUtils::share_directory
 #include <minizinc/model.hh>         // MiniZinc::Env
 #include <minizinc/parser.hh>        // MiniZinc::parse
 #include <minizinc/prettyprinter.hh> // MiniZinc::Printer
@@ -330,11 +331,21 @@ void MutationModel::clear_memory() noexcept
     m_memory.clear();
 }
 
-bool MutationModel::find_mutants()
+bool MutationModel::find_mutants(std::string&& include_path)
 {
     MiniZinc::Env env;
 
-    m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", {}, {}, false, true, false, config::is_debug_build, std::cerr);
+    std::vector<std::string> include_paths;
+
+    if (!include_path.empty())
+        include_paths.emplace_back(std::forward<std::string>(include_path));
+
+    const auto share_directory_result = MiniZinc::FileUtils::share_directory();
+
+    if (!share_directory_result.empty())
+        include_paths.emplace_back(std::format("{:s}/std/", share_directory_result));
+
+    m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
 
     if (!m_mutation_folder_path.empty())
     {

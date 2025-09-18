@@ -20,7 +20,7 @@ public:
     // Constructs a MutationModel that works with a filesystem.
     explicit MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const std::string_view> allowed_operators = {});
 
-    bool find_mutants();
+    bool find_mutants(std::string&& include_path);
 
     void clear_output_folder();
 
