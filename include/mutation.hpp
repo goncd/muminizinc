@@ -45,7 +45,7 @@ public:
         std::vector<Status> results;
     };
 
-    [[nodiscard]] std::span<const Entry> run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs);
+    [[nodiscard]] std::span<const Entry> run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs);
 
     [[nodiscard]] static std::span<const std::pair<std::string_view, std::string_view>> get_available_operators();
 

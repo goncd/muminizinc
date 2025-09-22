@@ -338,12 +338,18 @@ bool MutationModel::find_mutants(std::string&& include_path)
     std::vector<std::string> include_paths;
 
     if (!include_path.empty())
+    {
+        logd("Given path: {:s}", include_path);
         include_paths.emplace_back(std::forward<std::string>(include_path));
+    }
 
     const auto share_directory_result = MiniZinc::FileUtils::share_directory();
 
     if (!share_directory_result.empty())
+    {
+        logd("Calculated path: {:s}", share_directory_result);
         include_paths.emplace_back(std::format("{:s}/std/", share_directory_result));
+    }
 
     m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
 
@@ -435,7 +441,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs)
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };

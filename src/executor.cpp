@@ -159,7 +159,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
 
 }
 
-void execute_mutants(const std::filesystem::path& path, std::span<const std::string_view> compiler_arguments, std::span<const std::string_view> data_files, std::span<MutationModel::Entry> models, std::chrono::seconds timeout, std::uint64_t n_jobs)
+void execute_mutants(const std::filesystem::path& path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::span<MutationModel::Entry> models, std::chrono::seconds timeout, std::uint64_t n_jobs)
 {
     if (models.empty())
         return;

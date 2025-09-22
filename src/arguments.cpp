@@ -15,6 +15,7 @@
 #include <ranges>       // std::views::filter, std::views::split
 #include <span>         // std::span
 #include <stdexcept>    // std::runtime_error
+#include <string>       // std::string
 #include <string_view>  // std::string_view
 #include <system_error> // std::errc
 #include <utility>      // std::to_underlying
@@ -31,7 +32,7 @@
 namespace
 {
 
-using command_pointer = int (*)(std::span<std::string_view>);
+using command_pointer = int (*)(std::span<const std::string_view>);
 
 using namespace std::string_view_literals;
 
@@ -61,10 +62,10 @@ struct Command
     return option.name == rhs || option.short_name == rhs;
 }
 
-int analyse(std::span<std::string_view> arguments);
-int run(std::span<std::string_view> arguments);
-int clean(std::span<std::string_view> arguments);
-int help_subcommand(std::span<std::string_view> arguments);
+int analyse(std::span<const std::string_view> arguments);
+int run(std::span<const std::string_view> arguments);
+int clean(std::span<const std::string_view> arguments);
+int help_subcommand(std::span<const std::string_view> arguments);
 
 constexpr Option option_directory {
     .name = "--directory",
@@ -293,7 +294,7 @@ int help_subcommand(const Command& command)
     return EXIT_SUCCESS;
 }
 
-int help_subcommand(std::span<std::string_view> arguments)
+int help_subcommand(std::span<const std::string_view> arguments)
 {
     if (arguments.empty() || (arguments.size() == 2 && arguments[1] == option_help))
         return print_help();
@@ -310,7 +311,7 @@ int help_subcommand(std::span<std::string_view> arguments)
     return help_subcommand(*command);
 }
 
-int analyse(std::span<std::string_view> arguments)
+int analyse(std::span<const std::string_view> arguments)
 {
     std::string_view model_path;
     std::string_view output_directory;
@@ -370,24 +371,24 @@ int analyse(std::span<std::string_view> arguments)
 
     auto model = in_memory ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
 
-    model.find_mutants(std::string(include_path));
+    model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::absolute(include_path).string());
 
     return EXIT_SUCCESS;
 }
 
-int run(std::span<std::string_view> arguments)
+int run(std::span<const std::string_view> arguments)
 {
     std::string_view model_path;
     std::string_view output_directory;
     std::string_view compiler_path { "minizinc" };
     std::string_view include_path;
-    std::span<std::string_view> remaining_args;
+    std::span<const std::string_view> remaining_args;
     std::vector<std::string_view> operators;
     bool in_memory { false };
     const char* output { nullptr };
     std::uint64_t timeout_seconds { default_timeout_seconds };
     std::uint64_t n_jobs { default_n_jobs };
-    std::vector<std::string_view> data_files;
+    std::vector<std::string> data_files;
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
@@ -431,8 +432,24 @@ int run(std::span<std::string_view> arguments)
             if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_data.name) };
 
-            for (const auto path : std::views::split(arguments[i + 1], separator_arguments))
-                data_files.emplace_back(path);
+            for (const auto given_path : std::views::split(arguments[i + 1], separator_arguments))
+            {
+                const std::filesystem::path path { given_path.begin(), given_path.end() };
+
+                if (!std::filesystem::is_directory(path))
+                {
+                    data_files.emplace_back(path.string());
+                    continue;
+                }
+
+                for (const auto& element : std::filesystem::directory_iterator(path))
+                {
+                    if (!element.is_regular_file() && !element.is_symlink())
+                        throw std::runtime_error { std::format("{:s}: {:s}: Found an invalid file or a folder inside the folder \"{:s}\".", command_run.option.name, option_data.name, given_path) };
+
+                    data_files.emplace_back(element.path().string());
+                }
+            }
 
             ++i;
         }
@@ -519,14 +536,14 @@ int run(std::span<std::string_view> arguments)
         output_file = std::ofstream { output };
 
         if (!output_file->good())
-            throw std::runtime_error { std::format("Could not open the output file `{:s}`.", output) };
+            throw std::runtime_error { std::format("{:s}: Could not open the output file `{:s}`.", command_run.option.name, output) };
     }
 
     MutationModel model = (in_memory) ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
     bool should_run = true;
 
     if (in_memory)
-        should_run = model.find_mutants(std::string { include_path });
+        should_run = model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::absolute(include_path).string());
 
     std::size_t n_invalid {}, n_alive {}, n_dead {};
 
@@ -578,7 +595,7 @@ int run(std::span<std::string_view> arguments)
     return EXIT_SUCCESS;
 }
 
-int clean(std::span<std::string_view> arguments)
+int clean(std::span<const std::string_view> arguments)
 {
     std::string_view model_path {};
     std::string_view output_directory {};
