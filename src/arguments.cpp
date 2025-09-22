@@ -38,7 +38,9 @@ using namespace std::string_view_literals;
 
 constexpr auto end_of_options_token { "--"sv };
 constexpr auto separator_arguments { ',' };
-constexpr std::uint64_t default_timeout_seconds { 10 };
+
+#define DEFAULT_TIMEOUT_S 10
+
 constexpr std::uint64_t default_n_jobs { 0 }; // Unlimited jobs.
 
 struct Option
@@ -103,11 +105,19 @@ constexpr Option option_operator {
     .help = "Only process the selected operator, or a comma-separated list of them"
 };
 
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#define DEFAULT_TIMEOUT_STR TOSTRING(DEFAULT_TIMEOUT_S)
+
 constexpr Option option_timeout {
     .name = "--timeout",
     .short_name = "-t",
-    .help = "Run timeout in seconds. By default it's 10 seconds"
+    .help = "Run timeout in seconds. By default it's " DEFAULT_TIMEOUT_STR " seconds"
 };
+
+#undef DEFAULT_TIMEOUT_STR
+#undef TOSTRING
+#undef STRINGIFY
 
 constexpr Option option_data {
     .name = "--data",
@@ -386,9 +396,11 @@ int run(std::span<const std::string_view> arguments)
     std::vector<std::string_view> operators;
     bool in_memory { false };
     const char* output { nullptr };
-    std::uint64_t timeout_seconds { default_timeout_seconds };
     std::uint64_t n_jobs { default_n_jobs };
     std::vector<std::string> data_files;
+
+    std::uint64_t timeout_seconds { DEFAULT_TIMEOUT_S };
+#undef DEFAULT_TIMEOUT_S
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
@@ -417,7 +429,7 @@ int run(std::span<const std::string_view> arguments)
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_jobs.name) };
 
             const auto parameter { arguments[i + 1] };
-            auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), n_jobs);
+            const auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), n_jobs);
 
             if (ec == std::errc::invalid_argument)
                 throw std::runtime_error { "Invalid number." };
@@ -459,7 +471,7 @@ int run(std::span<const std::string_view> arguments)
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_timeout.name) };
 
             const auto parameter { arguments[i + 1] };
-            auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), timeout_seconds);
+            const auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), timeout_seconds);
 
             if (ec == std::errc::invalid_argument)
                 throw std::runtime_error { "Invalid number." };

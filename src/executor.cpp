@@ -23,7 +23,6 @@
 #include <boost/asio/io_context.hpp>     // boost::asio::io_context
 #include <boost/asio/read.hpp>           // boost::asio::read
 #include <boost/asio/readable_pipe.hpp>  // boost::asio::readable_pipe
-#include <boost/asio/steady_timer.hpp>   // boost::asio::steady_timer
 #include <boost/asio/writable_pipe.hpp>  // boost::asio::writable_pipe
 #include <boost/asio/write.hpp>          // boost::asio::write
 #include <boost/process/v2/process.hpp>  // boost::process::process
@@ -59,7 +58,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
     if (jobs.empty())
         return;
 
-    const auto job = std::move(jobs.front());
+    auto job = std::move(jobs.front());
     jobs.pop();
 
     if (!job.data_file.empty())
@@ -87,43 +86,19 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
 
     in_pipe.close();
 
-    auto timer = boost::asio::steady_timer(ctx);
-
-    if (timeout == std::chrono::seconds { 0 })
-        timer.expires_at(std::chrono::steady_clock::time_point::max());
-    else
-        timer.expires_after(timeout);
-
-    auto* const process_ptr = process.get();
-
-    timer.async_wait([&ctx, &path, timeout, &jobs, arguments, &completed_tasks, total_tasks, process = std::move(process), job](boost::system::error_code ec)
-        {
-            if (!ec)
-            {
-                process->terminate();
-
-                if constexpr(std::is_same_v<Job, OriginalJob>) {
-                    throw std::runtime_error { "Timeout when trying to run the original model." };
-                    static_cast<void>(job); // Silence the unused lambda capture warning on this path.
-                } else {
-                    job.status = MutationModel::Entry::Status::Dead;
-                }
-
-                launch_process(ctx, path, timeout, jobs, arguments, completed_tasks, total_tasks);
-            } });
-
-    process_ptr->async_wait([&ctx, &path, timeout, &jobs, arguments, &completed_tasks, total_tasks, timer = std::move(timer), out_pipe = std::move(out_pipe), err_pipe = std::move(err_pipe), job](boost::system::error_code ec, int exit_code) mutable
+    process->async_wait([&ctx, &path, timeout, &jobs, arguments, &completed_tasks, total_tasks, out_pipe = std::move(out_pipe), err_pipe = std::move(err_pipe), job = std::move(job), process = std::move(process)](boost::system::error_code ec, int exit_code) mutable
         {
             ++completed_tasks;
-            std::print("\r{:s}Progress{:s}: {:d} of {:g} execution{:s}({:0.2f}%)", logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), completed_tasks, total_tasks, total_tasks > 1 ? "s " : " ", static_cast<double>(completed_tasks) / total_tasks * 100);
-            std::cout.flush();
+            std::print("{:s}{:s}Progress{:s}: {:d} of {:g} execution{:s}({:0.2f}%)", logging::carriage_return(), logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), completed_tasks, total_tasks, total_tasks > 1 ? "s " : " ", static_cast<double>(completed_tasks) / total_tasks * 100);
 
-            // If an error occurred or we hit the timeout, don't do anything.
-            if(ec)
+            if (logging::have_color_output())
+                std::cout.flush();
+            else
+                std::println();
+
+            // If an error occurred, don't do anything.
+            if (ec)
                 return;
-
-            // Cancel the timer, because we have finished and we no longer care about timeouts.
-            timer.cancel();
 
             boost::system::error_code error_code;
 
@@ -172,6 +147,17 @@ void execute_mutants(const std::filesystem::path& path, std::span<const std::str
 
     for (const auto argument : compiler_arguments)
         arguments.emplace_back(argument.begin(), argument.size());
+
+    // Handle the user-given timeout.
+    std::string time_limit;
+
+    if (timeout != std::chrono::seconds::zero())
+    {
+        time_limit = std::to_string(timeout / std::chrono::milliseconds { 1 });
+
+        arguments.emplace_back("--time-limit");
+        arguments.emplace_back(time_limit);
+    }
 
     if (!data_files.empty())
         arguments.emplace_back();

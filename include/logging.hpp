@@ -72,31 +72,36 @@ enum class Style : std::uint8_t
 };
 
 template<OutputType output_type = OutputType::StandardOutput>
-constexpr std::string code(Color color) noexcept
+constexpr bool have_color_output() noexcept
 {
     if constexpr (output_type == OutputType::StandardOutput)
     {
         if (!have_color_stdout)
-            return {};
+            return false;
     }
     else if (!have_color_stderr)
-        return {};
+        return false;
 
-    return std::format("\u001b[{:d}m", std::to_underlying(color));
+    return true;
 }
 
 template<OutputType output_type = OutputType::StandardOutput>
-constexpr std::string code(Style style) noexcept
+constexpr std::string code(auto&& value) noexcept
+    requires(std::same_as<std::remove_cvref_t<decltype(value)>, Color> || std::same_as<std::remove_cvref_t<decltype(value)>, Style>)
 {
-    if constexpr (output_type == OutputType::StandardOutput)
-    {
-        if (!have_color_stdout)
-            return {};
-    }
-    else if (!have_color_stderr)
+    if (!have_color_output<output_type>())
         return {};
 
-    return std::format("\u001b[{:d}m", std::to_underlying(style));
+    return std::format("\u001b[{:d}m", std::to_underlying(value));
+}
+
+template<OutputType output_type = OutputType::StandardOutput>
+constexpr std::string_view carriage_return() noexcept
+{
+    if (!have_color_output<output_type>())
+        return {};
+
+    return "\r";
 }
 
 template<typename... Args>
