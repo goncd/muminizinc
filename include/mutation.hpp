@@ -58,13 +58,16 @@ private:
 
     MiniZinc::Model* m_model = nullptr;
 
-    // It's guaranteed that the first element is the original mutant.
+    // It's guaranteed that the first element is the original model.
     std::vector<Entry> m_memory;
 
     std::span<const std::string_view> m_allowed_operators;
 
     // Returns the STEM of the given directory entry if it's a valid mutant or the original file
     [[nodiscard]] std::optional<std::string> get_stem_if_valid(const std::filesystem::directory_entry& entry) const noexcept;
+
+    std::vector<std::pair<std::string, std::string>> m_detected_enums;
+    void fix_enums(std::string& model);
 };
 
 #endif

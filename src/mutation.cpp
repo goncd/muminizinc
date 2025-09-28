@@ -16,6 +16,7 @@
 #include <string>      // std::string
 #include <string_view> // std::string_view
 #include <utility>     // std::move, std::pair
+#include <vector>      // std::vector
 
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
@@ -37,6 +38,7 @@ using namespace std::string_view_literals;
 constexpr auto EXTENSION { ".mzn"sv };
 constexpr auto WIDTH_PRINTER { 80 };
 constexpr auto SEPARATOR { '-' };
+constexpr auto enum_keyword { "enum "sv };
 
 constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_LE,
@@ -83,6 +85,19 @@ constexpr std::array mutant_help {
     std::pair { call_name, "Function calls"sv }
 };
 
+constexpr bool is_quoted(std::string_view view) noexcept
+{
+    std::size_t quotes {};
+
+    for (std::size_t i {}; i < view.size(); ++i)
+    {
+        if (view[i] == '"' && (i == 0 || view[i - 1] != '\\'))
+            ++quotes;
+    }
+
+    return quotes % 2 == 1;
+}
+
 }
 
 /*
@@ -105,6 +120,10 @@ class MutationModel::Mutator : public MiniZinc::EVisitor
 {
 public:
     constexpr explicit Mutator(MutationModel& mutation_model) noexcept;
+
+    void vVarDecl(const MiniZinc::VarDecl* /*vd*/) {
+
+    };
 
     void vBinOp(MiniZinc::BinOp* binOp);
 
@@ -335,6 +354,16 @@ bool MutationModel::find_mutants(std::string&& include_path)
 {
     MiniZinc::Env env;
 
+    const std::ifstream ifstream { m_model_path };
+
+    std::stringstream buffer;
+    buffer << ifstream.rdbuf();
+
+    if (ifstream.bad())
+        throw std::runtime_error { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
+
+    auto original_model_str = std::move(buffer).str();
+
     std::vector<std::string> include_paths;
 
     if (!include_path.empty())
@@ -351,7 +380,7 @@ bool MutationModel::find_mutants(std::string&& include_path)
         include_paths.emplace_back(std::format("{:s}/std/", share_directory_result));
     }
 
-    m_model = MiniZinc::parse(env, { m_model_path }, {}, "", "", include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
+    m_model = MiniZinc::parse(env, {}, {}, original_model_str, m_filename_stem, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
 
     if (!m_mutation_folder_path.empty())
     {
@@ -367,11 +396,30 @@ bool MutationModel::find_mutants(std::string&& include_path)
             std::filesystem::create_directory(m_mutation_folder_path);
     }
 
+    Mutator mutator { *this };
+
+    for (const auto* item : *m_model)
+    {
+        if (const auto* varDeclI = item->dynamicCast<MiniZinc::VarDeclI>())
+        {
+            const auto* expression = varDeclI->e();
+
+            if (!expression->ti()->isEnum())
+                continue;
+
+            const auto str = expression->id()->v();
+            const std::string_view view { str.c_str(), str.size() };
+
+            logd("Detected enum \"{:s}\".", view);
+
+            m_detected_enums.emplace_back(std::format("set of int: {:s}", view),
+                std::format("{:s}{:s}", enum_keyword, view));
+        }
+    }
+
     // Print the original file passed through the compiler to strip out any comments so we can
     // diff from it cleanly.
     save_current_model({}, 0, 0);
-
-    Mutator mutator { *this };
 
     for (const auto* item : *m_model)
     {
@@ -398,30 +446,37 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     if (m_model == nullptr)
         throw std::runtime_error { "There is no model to print." };
 
-    const auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_filename_stem, SEPARATOR, mutant_name, SEPARATOR, mutant_id, SEPARATOR, occurrence_id);
+    std::ostringstream ostringstream;
+    MiniZinc::Printer printer(ostringstream, WIDTH_PRINTER, false);
+    printer.print(m_model);
+
+    std::string output = std::move(ostringstream).str();
+
+    fix_enums(output);
+
+    std::string mutant;
 
     if (!mutant_name.empty())
+    {
+        mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_filename_stem, SEPARATOR, mutant_name, SEPARATOR, mutant_id, SEPARATOR, occurrence_id);
         std::println("Generating mutant `{:s}{:s}{:s}`", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset));
+    }
 
     if (m_mutation_folder_path.empty())
     {
-        std::ostringstream ostringstream;
-        MiniZinc::Printer printer(ostringstream, WIDTH_PRINTER, false);
-        printer.print(m_model);
-
         if (m_memory.empty())
         {
             if (!mutant_name.empty())
                 throw std::runtime_error { "Trying to store a mutant when the original source hasn't been stored." };
 
-            m_memory.emplace_back(m_filename_stem, std::move(ostringstream).str());
+            m_memory.emplace_back(m_filename_stem, std::move(output));
         }
         else
         {
             if (mutant_name.empty())
                 throw std::runtime_error { "Trying to store the original source more than once." };
 
-            m_memory.emplace_back(mutant, std::move(ostringstream).str());
+            m_memory.emplace_back(mutant, std::move(output));
         }
     }
     else
@@ -431,13 +486,12 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
         if (std::filesystem::exists(path))
             throw std::runtime_error { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.native()) };
 
-        auto file = std::ofstream(path);
+        std::ofstream file { path };
 
         if (!file.is_open())
             throw std::runtime_error { std::format(R"(Could not open the mutant file "{:s}")", path.native()) };
 
-        MiniZinc::Printer printer(file, WIDTH_PRINTER, false);
-        printer.print(m_model);
+        file << output;
     }
 }
 
@@ -516,4 +570,28 @@ std::optional<std::string> MutationModel::get_stem_if_valid(const std::filesyste
         return str;
 
     return std::nullopt;
+}
+
+void MutationModel::fix_enums(std::string& model)
+{
+    for (const auto& [string_to_find, string_to_replace] : m_detected_enums)
+    {
+        std::string::size_type pos {};
+
+        while (pos < model.size())
+        {
+            pos = model.find(string_to_find, pos);
+
+            if (pos == std::string::npos)
+                break;
+
+            if (!is_quoted(std::string_view { model }.substr(0, pos)))
+            {
+                model.replace(pos, string_to_find.size(), string_to_replace);
+                break;
+            }
+
+            pos += string_to_find.size();
+        }
+    }
 }

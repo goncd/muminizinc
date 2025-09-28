@@ -381,7 +381,7 @@ int analyse(std::span<const std::string_view> arguments)
 
     auto model = in_memory ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
 
-    model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::absolute(include_path).string());
+    model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
 
     return EXIT_SUCCESS;
 }
@@ -555,7 +555,7 @@ int run(std::span<const std::string_view> arguments)
     bool should_run = true;
 
     if (in_memory)
-        should_run = model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::absolute(include_path).string());
+        should_run = model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
 
     std::size_t n_invalid {}, n_alive {}, n_dead {};
 
