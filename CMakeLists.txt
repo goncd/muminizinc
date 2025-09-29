@@ -2,42 +2,43 @@ cmake_minimum_required(VERSION 3.30)
 
 SET(PROJECT_FANCY_NAME MuMiniZinc)
 string(TOLOWER ${PROJECT_FANCY_NAME} PROJECT_NAME)
+SET(PROJECT_NAME_LIB "lib${PROJECT_NAME}")
 
 project(
   ${PROJECT_NAME}
   VERSION 0.0.1
   LANGUAGES CXX)
 
-file(GLOB SOURCE
-    ${PROJECT_SOURCE_DIR}/src/arguments.cpp
-    ${PROJECT_SOURCE_DIR}/src/main.cpp
-    ${PROJECT_SOURCE_DIR}/src/mutation.cpp
-    ${PROJECT_SOURCE_DIR}/src/executor.cpp)
-
-# Static analysis
+# Project properties
 set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
 set(CMAKE_CXX_CPPCHECK "cppcheck")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # No C++20 modules for now
 cmake_policy(SET CMP0155 OLD)
 
 configure_file(cmake/configured_files/config.hpp.in ${CMAKE_BINARY_DIR}/include/build/config.hpp ESCAPE_QUOTES)
 
-add_executable(${PROJECT_NAME} ${SOURCE})
-
-set_target_properties(${PROJECT_NAME}
-    PROPERTIES
-        CXX_STANDARD 23
-        CXX_STANDARD_REQUIRED YES
-        CXX_EXTENSIONS NO
+add_library(${PROJECT_NAME_LIB}
+    ${PROJECT_SOURCE_DIR}/src/arguments.cpp
+    ${PROJECT_SOURCE_DIR}/src/mutation.cpp
+    ${PROJECT_SOURCE_DIR}/src/executor.cpp
 )
 
-target_include_directories(${PROJECT_NAME} PUBLIC "${PROJECT_SOURCE_DIR}/include")
-target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/include")
+target_include_directories(${PROJECT_NAME_LIB} PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(${PROJECT_NAME_LIB} PRIVATE "${CMAKE_BINARY_DIR}/include")
+
+target_compile_definitions(${PROJECT_NAME_LIB} PRIVATE BOOST_PROCESS_USE_STD_FS=1)
+
+add_executable(${PROJECT_NAME} ${PROJECT_SOURCE_DIR}/src/main.cpp)
+
+add_library(common_options INTERFACE)
 
 # Compiler configuration
-target_compile_options(${PROJECT_NAME} PRIVATE
+target_compile_options(common_options INTERFACE
     $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
         -Wall
         -Wextra
@@ -55,17 +56,20 @@ target_compile_options(${PROJECT_NAME} PRIVATE
             -DNDEBUG
             -march=native>>
     $<$<CXX_COMPILER_ID:MSVC>:
-        /W4>)
+        /W4
+        /d1trimfile:${CMAKE_CURRENT_SOURCE_DIR}>)
 
-target_link_options(${PROJECT_NAME} PRIVATE
+target_link_options(common_options INTERFACE
     $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
         $<$<CONFIG:DEBUG>:
             -fsanitize=address,leak,undefined>>)
 
+target_link_libraries(${PROJECT_NAME_LIB} PRIVATE common_options)
+target_link_libraries(${PROJECT_NAME} PRIVATE common_options)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME_LIB})
+
 find_package(libminizinc REQUIRED)
 find_package(Boost 1.88 REQUIRED COMPONENTS process)
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE BOOST_PROCESS_USE_STD_FS=1)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE mzn)
 
@@ -82,3 +86,7 @@ list(APPEND PACKAGE_INCLUDE_DIRS "${libminizinc_INCLUDE_DIRS}/include")
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PACKAGE_INCLUDE_DIRS})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Boost::process)
+
+# Testing framework
+include(CTest)
+add_subdirectory(tests)
