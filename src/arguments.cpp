@@ -143,6 +143,12 @@ constexpr Option option_include {
     .help = "The include path. By default it will be searched on the directories above this executable"
 };
 
+constexpr Option option_mutant {
+    .name = "--mutant",
+    .short_name = "-u",
+    .help = "Only run the specified mutant, or a comma-separated list of them"
+};
+
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
@@ -163,7 +169,8 @@ constexpr std::array run_parameters {
     option_data,
     option_jobs,
     option_output,
-    option_include
+    option_include,
+    option_mutant
 };
 
 constexpr std::array clean_parameters {
@@ -398,13 +405,24 @@ int run(std::span<const std::string_view> arguments)
     const char* output { nullptr };
     std::uint64_t n_jobs { default_n_jobs };
     std::vector<std::string> data_files;
+    std::vector<std::string_view> mutants;
 
     std::uint64_t timeout_seconds { DEFAULT_TIMEOUT_S };
 #undef DEFAULT_TIMEOUT_S
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_include)
+        if (arguments[i] == option_mutant)
+        {
+            if (i + 1 >= arguments.size())
+                throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_mutant.name) };
+
+            for (const auto mutant : std::views::split(arguments[i + 1], separator_arguments))
+                mutants.emplace_back(mutant);
+
+            ++i;
+        }
+        else if (arguments[i] == option_include)
         {
             if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_include.name) };
@@ -566,10 +584,13 @@ int run(std::span<const std::string_view> arguments)
         if (in_memory)
             std::println();
 
-        const auto entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs) | std::views::drop(1);
+        const auto entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants) | std::views::drop(1);
 
         for (const auto& entry : entries)
         {
+            if (entry.results.empty())
+                continue;
+
             std::format_to(output_stream, "{:<{}}   ", entry.name, entries.back().name.size());
 
             auto status = MutationModel::Entry::Status::Dead;

@@ -301,7 +301,7 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::span<const 
         }
 
         if (!found)
-            throw std::runtime_error { std::format("Unknown mutant `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
+            throw std::runtime_error { std::format("Unknown operator `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
     }
 
     if (!std::filesystem::is_regular_file(m_model_path))
@@ -495,7 +495,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs)
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
@@ -518,17 +518,17 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
         // Insert all the mutants found in the folder, but skip the original model.
         for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         {
-            const auto opt = get_stem_if_valid(entry);
+            const auto stem = get_stem_if_valid(entry);
 
-            if (!opt)
+            if (!stem)
                 throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
 
-            if (*opt == m_filename_stem)
+            if (*stem == m_filename_stem)
                 continue;
 
             if (!m_allowed_operators.empty())
             {
-                std::string_view entry_view = *opt;
+                std::string_view entry_view = *stem;
 
                 if (const auto pos = entry_view.find_first_not_of(m_filename_stem); pos != std::string_view::npos)
                     entry_view = entry_view.substr(pos + 1);
@@ -538,6 +538,9 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
                     continue;
             }
 
+            if (!mutants.empty() && !std::ranges::contains(mutants, std::string_view { *stem }))
+                continue;
+
             const std::ifstream ifstream { entry.path() };
             std::stringstream buffer;
             buffer << ifstream.rdbuf();
@@ -545,11 +548,11 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
             if (ifstream.bad())
                 throw std::runtime_error { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
 
-            m_memory.emplace_back(*std::move(opt), std::move(buffer).str());
+            m_memory.emplace_back(*std::move(stem), std::move(buffer).str());
         }
     }
 
-    execute_mutants(compiler_path, compiler_arguments, data_files, m_memory, timeout, n_jobs);
+    execute_mutants(compiler_path, compiler_arguments, data_files, m_memory, timeout, n_jobs, mutants);
 
     return m_memory;
 }
