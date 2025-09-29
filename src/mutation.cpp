@@ -1,22 +1,23 @@
 #include <mutation.hpp>
 
-#include <algorithm>   // std::ranges::contains
-#include <array>       // std::array, std::end
-#include <chrono>      // std::chrono::seconds
-#include <cstdint>     // std::uint64_t
-#include <filesystem>  // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
-#include <format>      // std::format
-#include <fstream>     // std::fstream
-#include <iostream>    // std::cerr, std::cout
-#include <optional>    // std::optional
-#include <print>       // std::println
-#include <span>        // std::span
-#include <sstream>     // std::ostringstream
-#include <stdexcept>   // std::runtime_error
-#include <string>      // std::string
-#include <string_view> // std::string_view
-#include <utility>     // std::move, std::pair
-#include <vector>      // std::vector
+#include <algorithm>    // std::ranges::contains
+#include <array>        // std::array, std::end
+#include <chrono>       // std::chrono::seconds
+#include <cstdint>      // std::uint64_t
+#include <filesystem>   // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
+#include <format>       // std::format
+#include <fstream>      // std::fstream
+#include <iostream>     // std::cerr, std::cout
+#include <optional>     // std::optional
+#include <print>        // std::println
+#include <span>         // std::span
+#include <sstream>      // std::ostringstream
+#include <stdexcept>    // std::runtime_error
+#include <string>       // std::string
+#include <string_view>  // std::string_view
+#include <system_error> // std::error_code
+#include <utility>      // std::move, std::pair
+#include <vector>       // std::vector
 
 #include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
@@ -515,6 +516,9 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
 
         m_memory.emplace_back(m_filename_stem, std::move(buffer).str());
 
+        std::error_code last_write_ec {};
+        const auto last_write_time_original { std::filesystem::last_write_time(m_model_path, last_write_ec) };
+
         // Insert all the mutants found in the folder, but skip the original model.
         for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         {
@@ -522,6 +526,14 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
 
             if (!stem)
                 throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
+
+            if (!last_write_ec)
+            {
+                const auto last_write_time_mutant { std::filesystem::last_write_time(entry, last_write_ec) };
+
+                if (!last_write_ec && last_write_time_original > last_write_time_mutant)
+                    throw std::runtime_error { "The original model is newer than the mutants, so they might be outdated. Please re-analyse the original model." };
+            }
 
             if (*stem == m_filename_stem)
                 continue;
