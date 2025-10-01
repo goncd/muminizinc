@@ -106,7 +106,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
 
             boost::asio::read(exit_code == EXIT_SUCCESS ? out_pipe : err_pipe, boost::asio::dynamic_buffer(output), error_code);
 
-            if (error_code && !(error_code == boost::asio::error::eof))
+            if (error_code != boost::asio::error::eof)
                 throw std::runtime_error { "Cannot grab the output of the executable." };
 
             if constexpr(std::is_same_v<Job, OriginalJob>)
@@ -132,18 +132,47 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
             launch_process(ctx, path, timeout, jobs, arguments,completed_tasks, total_tasks); });
 }
 
+void check_version(boost::asio::io_context& ctx, const std::filesystem::path& path)
+{
+    boost::asio::readable_pipe out_pipe { ctx };
+
+    boost::process::process process {
+        ctx,
+        path,
+        { "--version" },
+        boost::process::process_stdio { .in = nullptr, .out = out_pipe, .err = nullptr }
+    };
+
+    boost::system::error_code error_code;
+
+    std::string output;
+
+    boost::asio::read(out_pipe, boost::asio::dynamic_buffer(output), error_code);
+
+    if (error_code != boost::asio::error::eof)
+        throw BadVersion { "Could not verify the compiler's version: Could not grab the output." };
+
+    process.wait();
+
+    if (process.exit_code() != EXIT_SUCCESS)
+        throw BadVersion { "Could not verify the compiler's version: The compiler exit code is not success." };
+
+    if (!output.contains(MutationModel::get_version()))
+        throw BadVersion { "Compiler version mismatch." };
 }
 
-void execute_mutants(const std::filesystem::path& path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::span<MutationModel::Entry> models, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants)
+}
+
+void execute_mutants(const configuration& configuration)
 {
-    if (models.empty())
+    if (configuration.models.empty())
         return;
 
-    for (const auto mutant : mutants)
+    for (const auto mutant : configuration.mutants)
     {
         bool found = false;
 
-        for (const auto& entry : models)
+        for (const auto& entry : configuration.models)
         {
             if (mutant == entry.name)
             {
@@ -158,59 +187,57 @@ void execute_mutants(const std::filesystem::path& path, std::span<const std::str
 
     // Set the arguments for the executable.
     std::vector<boost::string_view> arguments;
-    arguments.reserve(compiler_arguments.size() + (data_files.empty() ? 1 : 2));
+    arguments.reserve(configuration.compiler_arguments.size() + (configuration.data_files.empty() ? 1 : 2));
 
     arguments.emplace_back("-");
 
-    for (const auto argument : compiler_arguments)
+    for (const auto argument : configuration.compiler_arguments)
         arguments.emplace_back(argument.begin(), argument.size());
 
     // Handle the user-given timeout.
     std::string time_limit;
 
-    if (timeout != std::chrono::seconds::zero())
+    if (configuration.timeout != std::chrono::seconds::zero())
     {
-        time_limit = std::to_string(timeout / std::chrono::milliseconds { 1 });
+        time_limit = std::to_string(configuration.timeout / std::chrono::milliseconds { 1 });
 
         arguments.emplace_back("--time-limit");
         arguments.emplace_back(time_limit);
     }
 
-    if (!data_files.empty())
+    if (!configuration.data_files.empty())
         arguments.emplace_back();
 
-    std::vector<std::string> original_outputs { std::max(data_files.size(), std::vector<std::string>::size_type { 1 }) };
+    std::vector<std::string> original_outputs { std::max(configuration.data_files.size(), std::vector<std::string>::size_type { 1 }) };
 
     // First, add the jobs for the original model, so we can make sure it actually compiles and runs with all the provided data files.
-    models.front().results.resize(original_outputs.size(), MutationModel::Entry::Status::Alive);
-
-    boost::asio::io_context ctx;
+    configuration.models.front().results.resize(original_outputs.size(), MutationModel::Entry::Status::Alive);
 
     std::queue<OriginalJob> original_jobs;
 
-    if (data_files.empty())
-        original_jobs.emplace(models.front().contents, std::string_view {}, original_outputs.front());
+    if (configuration.data_files.empty())
+        original_jobs.emplace(configuration.models.front().contents, std::string_view {}, original_outputs.front());
     else
     {
-        for (const auto [index, data_file] : std::ranges::views::enumerate(data_files))
-            original_jobs.emplace(models.front().contents, data_file, original_outputs[static_cast<std::size_t>(index)]);
+        for (const auto [index, data_file] : std::ranges::views::enumerate(configuration.data_files))
+            original_jobs.emplace(configuration.models.front().contents, data_file, original_outputs[static_cast<std::size_t>(index)]);
     }
 
     // Now, add all the mutants with all the data files and compare their outputs against the original model.
     std::queue<MutantJob> mutant_jobs;
 
-    for (auto& mutant : models | std::ranges::views::drop(1))
+    for (auto& mutant : configuration.models | std::ranges::views::drop(1))
     {
-        if (!mutants.empty() && !std::ranges::contains(mutants, mutant.name))
+        if (!configuration.mutants.empty() && !std::ranges::contains(configuration.mutants, mutant.name))
             continue;
 
         mutant.results.resize(original_outputs.size(), MutationModel::Entry::Status::Alive);
 
-        if (data_files.empty())
+        if (configuration.data_files.empty())
             mutant_jobs.emplace(mutant.contents, std::string_view {}, original_outputs.front(), mutant.results.front());
         else
         {
-            for (const auto [index, data_file] : std::ranges::views::enumerate(data_files))
+            for (const auto [index, data_file] : std::ranges::views::enumerate(configuration.data_files))
             {
                 const auto index_value = static_cast<std::size_t>(index);
                 mutant_jobs.emplace(mutant.contents, data_file, original_outputs[index_value], mutant.results[index_value]);
@@ -218,17 +245,22 @@ void execute_mutants(const std::filesystem::path& path, std::span<const std::str
         }
     }
 
+    boost::asio::io_context ctx;
+
+    if (configuration.check_compiler_version)
+        check_version(ctx, configuration.path);
+
     const double total_tasks { static_cast<double>(original_jobs.size() + mutant_jobs.size()) };
 
     std::uint64_t completed_tasks {};
 
-    for (std::size_t i {}; (n_jobs == 0 || i < n_jobs) && !original_jobs.empty(); ++i)
-        launch_process(ctx, path, timeout, original_jobs, arguments, completed_tasks, total_tasks);
+    for (std::size_t i {}; (configuration.n_jobs == 0 || i < configuration.n_jobs) && !original_jobs.empty(); ++i)
+        launch_process(ctx, configuration.path, configuration.timeout, original_jobs, arguments, completed_tasks, total_tasks);
 
     ctx.run();
 
-    for (std::size_t i {}; (n_jobs == 0 || i < n_jobs) && !mutant_jobs.empty(); ++i)
-        launch_process(ctx, path, timeout, mutant_jobs, arguments, completed_tasks, total_tasks);
+    for (std::size_t i {}; (configuration.n_jobs == 0 || i < configuration.n_jobs) && !mutant_jobs.empty(); ++i)
+        launch_process(ctx, configuration.path, configuration.timeout, mutant_jobs, arguments, completed_tasks, total_tasks);
 
     ctx.restart();
     ctx.run();

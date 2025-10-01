@@ -2,6 +2,7 @@
 #define EXECUTOR_HPP
 
 #include <chrono>      // std::chrono::seconds
+#include <exception>   // std::runtime_error
 #include <filesystem>  // std::filesystem::path
 #include <span>        // std::span
 #include <string>      // std::string
@@ -9,6 +10,23 @@
 
 #include <mutation.hpp> // MutationModel::Entry
 
-void execute_mutants(const std::filesystem::path& path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::span<MutationModel::Entry> models, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants);
+struct configuration
+{
+    const std::filesystem::path& path;
+    std::span<const std::string_view> compiler_arguments;
+    std::span<const std::string> data_files;
+    std::span<MutationModel::Entry> models;
+    std::chrono::seconds timeout;
+    std::uint64_t n_jobs;
+    std::span<const std::string_view> mutants;
+    bool check_compiler_version;
+};
+
+class BadVersion : public std::runtime_error
+{
+    using std::runtime_error::runtime_error;
+};
+
+void execute_mutants(const configuration& configuration);
 
 #endif

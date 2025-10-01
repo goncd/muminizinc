@@ -9,7 +9,11 @@
 #include <utility>     // std::move
 #include <vector>      // std::vector
 
-#include <minizinc/model.hh> // MiniZinc::Model
+#include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
+#include <minizinc/model.hh>  // MiniZinc::Model
+
+#define MZN_VERSION MZN_VERSION_MAJOR "." MZN_VERSION_MINOR "." MZN_VERSION_PATCH
+#define MZN_VERSION_FULL "version " MZN_VERSION
 
 class MutationModel
 {
@@ -45,9 +49,12 @@ public:
         std::vector<Status> results;
     };
 
-    [[nodiscard]] std::span<const Entry> run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants);
+    [[nodiscard]] std::span<const Entry> run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants, bool check_compiler_version);
 
     [[nodiscard]] static std::span<const std::pair<std::string_view, std::string_view>> get_available_operators();
+
+    static constexpr std::string_view get_version() noexcept { return MZN_VERSION; }
+    static constexpr std::string_view get_version_full() noexcept { return MZN_VERSION_FULL; }
 
 private:
     class Mutator;

@@ -496,7 +496,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants)
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants, bool check_compiler_version)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
@@ -564,7 +564,18 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
         }
     }
 
-    execute_mutants(compiler_path, compiler_arguments, data_files, m_memory, timeout, n_jobs, mutants);
+    const configuration configuration {
+        .path = compiler_path,
+        .compiler_arguments = compiler_arguments,
+        .data_files = data_files,
+        .models = m_memory,
+        .timeout = timeout,
+        .n_jobs = n_jobs,
+        .mutants = mutants,
+        .check_compiler_version = check_compiler_version
+    };
+
+    execute_mutants(configuration);
 
     return m_memory;
 }

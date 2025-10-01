@@ -21,11 +21,10 @@
 #include <utility>      // std::to_underlying
 #include <vector>       // std::vector
 
-#include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
-
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
 
 #include <build/config.hpp> // config::project_version
+#include <executor.hpp>     // BadVersion
 #include <logging.hpp>      // logging::code, logging::Color, logging::Style
 #include <mutation.hpp>     // MutationModel
 
@@ -149,6 +148,12 @@ constexpr Option option_mutant {
     .help = "Only run the specified mutant, or a comma-separated list of them"
 };
 
+constexpr Option option_ignore_version_check {
+    .name = "--ignore-version-check",
+    .short_name = {},
+    .help = "Ignore the compiler's version check"
+};
+
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
@@ -170,7 +175,8 @@ constexpr std::array run_parameters {
     option_jobs,
     option_output,
     option_include,
-    option_mutant
+    option_mutant,
+    option_ignore_version_check
 };
 
 constexpr std::array clean_parameters {
@@ -301,11 +307,18 @@ int help_subcommand(const Command& command)
         {}, [](const Option& option)
         { return option.name.length(); });
 
+    const auto lagest_option_length = largest_option->name.length() - (largest_option->short_name.empty() ? 4 : 0);
+
     if (largest_option != command.options.end())
     {
         std::println("\n{:s}{:s}Options{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
         for (const auto& option : command.options)
-            std::println("  {}, {:<{}}  {}", option.short_name, option.name, largest_option->name.length(), option.help);
+        {
+            if (option.short_name.empty())
+                std::println("  {:<{}}  {}", option.name, lagest_option_length, option.help);
+            else
+                std::println("  {}, {:<{}}  {}", option.short_name, option.name, lagest_option_length, option.help);
+        }
     }
 
     return EXIT_SUCCESS;
@@ -406,13 +419,16 @@ int run(std::span<const std::string_view> arguments)
     std::uint64_t n_jobs { default_n_jobs };
     std::vector<std::string> data_files;
     std::vector<std::string_view> mutants;
+    bool check_compiler_version { true };
 
     std::uint64_t timeout_seconds { DEFAULT_TIMEOUT_S };
 #undef DEFAULT_TIMEOUT_S
 
     for (std::size_t i { 0 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_mutant)
+        if (arguments[i] == option_ignore_version_check)
+            check_compiler_version = false;
+        else if (arguments[i] == option_mutant)
         {
             if (i + 1 >= arguments.size())
                 throw std::runtime_error { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_mutant.name) };
@@ -584,8 +600,16 @@ int run(std::span<const std::string_view> arguments)
         if (in_memory)
             std::println();
 
-        const auto entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants) | std::views::drop(1);
+        std::span<const MutationModel::Entry> entries;
 
+        try
+        {
+            entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants, check_compiler_version) | std::views::drop(1);
+        }
+        catch (const BadVersion& bad_version)
+        {
+            throw std::runtime_error { std::format("{:s}\n\nTo disable the compiler version check, use the option `{:s}{:s}{:s}`. The expected version number is {:s}.", bad_version.what(), logging::code(logging::Color::Blue), option_ignore_version_check.name, logging::code(logging::Style::Reset), MutationModel::get_version()) };
+        }
         for (const auto& entry : entries)
         {
             if (entry.results.empty())
@@ -663,7 +687,7 @@ int clean(std::span<const std::string_view> arguments)
 
 int print_version()
 {
-    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}.{:s}.{:s}", config::project_fancy_name, config::project_version, MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH);
+    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}", config::project_fancy_name, config::project_version, MutationModel::get_version());
 
     if constexpr (config::is_debug_build)
         std::println("\nDebug build.");
