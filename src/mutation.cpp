@@ -3,6 +3,7 @@
 #include <algorithm>    // std::ranges::contains
 #include <array>        // std::array, std::end
 #include <chrono>       // std::chrono::seconds
+#include <cstddef>      // std::size_t
 #include <cstdint>      // std::uint64_t
 #include <filesystem>   // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
 #include <format>       // std::format
@@ -88,7 +89,7 @@ constexpr std::array mutant_help {
 
 constexpr bool is_quoted(std::string_view view) noexcept
 {
-    std::size_t quotes {};
+    std::uint64_t quotes {};
 
     for (std::size_t i {}; i < view.size(); ++i)
     {
@@ -365,6 +366,9 @@ bool MutationModel::find_mutants(std::string&& include_path)
 
     auto original_model_str = std::move(buffer).str();
 
+    if (original_model_str.empty())
+        throw std::runtime_error { "Empty file given. Nothing to do." };
+
     std::vector<std::string> include_paths;
 
     if (!include_path.empty())
@@ -383,7 +387,9 @@ bool MutationModel::find_mutants(std::string&& include_path)
 
     m_model = MiniZinc::parse(env, {}, {}, original_model_str, m_filename_stem, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
 
-    if (!m_mutation_folder_path.empty())
+    if (m_mutation_folder_path.empty())
+        m_memory.emplace_back();
+    else
     {
         // If a folder with such name exists, then we're OK as long as it's empty. If it has contents, there might be
         // code from an old analysis.
@@ -393,8 +399,6 @@ bool MutationModel::find_mutants(std::string&& include_path)
             if (!std::filesystem::is_empty(m_mutation_folder_path))
                 throw std::runtime_error { std::format(R"(The selected path for storing the mutants, `{:s}`, is non-empty. Please run `clean` first or manually remove or empty the folder to avoid accidental data loss.)", m_mutation_folder_path.generic_string()) };
         }
-        else
-            std::filesystem::create_directory(m_mutation_folder_path);
     }
 
     Mutator mutator { *this };
@@ -418,10 +422,6 @@ bool MutationModel::find_mutants(std::string&& include_path)
         }
     }
 
-    // Print the original file passed through the compiler to strip out any comments so we can
-    // diff from it cleanly.
-    save_current_model({}, 0, 0);
-
     for (const auto* item : *m_model)
     {
         if (const auto* constraintI = item->dynamicCast<MiniZinc::ConstraintI>())
@@ -437,7 +437,13 @@ bool MutationModel::find_mutants(std::string&& include_path)
     if (generated_mutants == 0)
         std::println("Couldn't detect any mutants.");
     else
+    {
         std::println("\nGenerated {:s}{:d}{:s} mutants.", logging::code(logging::Color::Blue), generated_mutants, logging::code(logging::Style::Reset));
+
+        // Save the original file passed through the compiler to normalize it so we can
+        // diff from it cleanly. Only print it if we actually detected any mutants at all, though.
+        save_current_model({}, 0, 0);
+    }
 
     return generated_mutants != 0;
 }
@@ -465,23 +471,21 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
 
     if (m_mutation_folder_path.empty())
     {
-        if (m_memory.empty())
+        if (mutant_name.empty())
         {
-            if (!mutant_name.empty())
-                throw std::runtime_error { "Trying to store a mutant when the original source hasn't been stored." };
-
-            m_memory.emplace_back(m_filename_stem, std::move(output));
-        }
-        else
-        {
-            if (mutant_name.empty())
+            if (!m_memory.front().name.empty())
                 throw std::runtime_error { "Trying to store the original source more than once." };
 
-            m_memory.emplace_back(mutant, std::move(output));
+            m_memory.front().name = m_filename_stem;
+            m_memory.front().contents = std::move(output);
         }
+        else
+            m_memory.emplace_back(mutant, std::move(output));
     }
     else
     {
+        std::filesystem::create_directory(m_mutation_folder_path);
+
         const auto path = (m_mutation_folder_path / (mutant_name.empty() ? m_filename_stem : mutant)).replace_extension(EXTENSION);
 
         if (std::filesystem::exists(path))

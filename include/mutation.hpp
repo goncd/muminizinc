@@ -42,6 +42,8 @@ public:
         Entry(std::string name, std::string contents) noexcept :
             name { std::move(name) }, contents { std::move(contents) } { }
 
+        Entry() noexcept = default;
+
         std::string name;
         std::string contents;
 
