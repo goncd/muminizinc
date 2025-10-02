@@ -15,14 +15,16 @@
 #define MZN_VERSION MZN_VERSION_MAJOR "." MZN_VERSION_MINOR "." MZN_VERSION_PATCH
 #define MZN_VERSION_FULL "version " MZN_VERSION
 
+#include <case_insensitive_string.hpp> // ascii_ci_string_view
+
 class MutationModel
 {
 public:
     // Constructs a MutationModel that works only in memory.
-    explicit MutationModel(const std::filesystem::path& path, std::span<const std::string_view> allowed_operators = {});
+    explicit MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators = {});
 
     // Constructs a MutationModel that works with a filesystem.
-    explicit MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const std::string_view> allowed_operators = {});
+    explicit MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const ascii_ci_string_view> allowed_operators = {});
 
     bool find_mutants(std::string&& include_path);
 
@@ -51,7 +53,7 @@ public:
         std::vector<Status> results;
     };
 
-    [[nodiscard]] std::span<const Entry> run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants, bool check_compiler_version);
+    [[nodiscard]] std::span<const Entry> run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version);
 
     [[nodiscard]] static std::span<const std::pair<std::string_view, std::string_view>> get_available_operators();
 
@@ -70,7 +72,7 @@ private:
     // It's guaranteed that the first element is the original model.
     std::vector<Entry> m_memory;
 
-    std::span<const std::string_view> m_allowed_operators;
+    std::span<const ascii_ci_string_view> m_allowed_operators;
 
     // Returns the STEM of the given directory entry if it's a valid mutant or the original file
     [[nodiscard]] std::optional<std::string> get_stem_if_valid(const std::filesystem::directory_entry& entry) const noexcept;

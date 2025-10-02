@@ -23,10 +23,11 @@
 
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
 
-#include <build/config.hpp> // config::project_version
-#include <executor.hpp>     // BadVersion
-#include <logging.hpp>      // logging::code, logging::Color, logging::Style
-#include <mutation.hpp>     // MutationModel
+#include <build/config.hpp>            // config::project_version
+#include <case_insensitive_string.hpp> // ascii_ci_string_view
+#include <executor.hpp>                // BadVersion
+#include <logging.hpp>                 // logging::code, logging::Color, logging::Style
+#include <mutation.hpp>                // MutationModel
 
 namespace
 {
@@ -347,9 +348,9 @@ int analyse(std::span<const std::string_view> arguments)
     std::string_view output_directory;
     std::string_view include_path;
     bool in_memory = false;
-    std::vector<std::string_view> operators;
+    std::vector<ascii_ci_string_view> operators;
 
-    for (std::size_t i { 0 }; i < arguments.size(); ++i)
+    for (std::size_t i {}; i < arguments.size(); ++i)
     {
         if (arguments[i] == option_include)
         {
@@ -413,18 +414,18 @@ int run(std::span<const std::string_view> arguments)
     std::string_view compiler_path { "minizinc" };
     std::string_view include_path;
     std::span<const std::string_view> remaining_args;
-    std::vector<std::string_view> operators;
+    std::vector<ascii_ci_string_view> operators;
     bool in_memory { false };
     const char* output { nullptr };
     std::uint64_t n_jobs { default_n_jobs };
     std::vector<std::string> data_files;
-    std::vector<std::string_view> mutants;
+    std::vector<ascii_ci_string_view> mutants;
     bool check_compiler_version { true };
 
     std::uint64_t timeout_seconds { DEFAULT_TIMEOUT_S };
 #undef DEFAULT_TIMEOUT_S
 
-    for (std::size_t i { 0 }; i < arguments.size(); ++i)
+    for (std::size_t i {}; i < arguments.size(); ++i)
     {
         if (arguments[i] == option_ignore_version_check)
             check_compiler_version = false;
@@ -657,7 +658,7 @@ int clean(std::span<const std::string_view> arguments)
     std::string_view model_path {};
     std::string_view output_directory {};
 
-    for (std::size_t i { 0 }; i < arguments.size(); ++i)
+    for (std::size_t i {}; i < arguments.size(); ++i)
     {
         if (arguments[i] == option_directory)
         {
@@ -749,7 +750,7 @@ int parse_arguments(std::span<const char*> argv)
 
     const std::span arguments_span { arguments };
 
-    for (std::size_t i { 0 }; i < arguments_span.size(); ++i)
+    for (std::size_t i {}; i < arguments_span.size(); ++i)
     {
         for (const auto& command : commands)
             if (arguments[i] == command.option)

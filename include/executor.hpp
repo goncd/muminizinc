@@ -8,7 +8,8 @@
 #include <string>      // std::string
 #include <string_view> // std::string_view
 
-#include <mutation.hpp> // MutationModel::Entry
+#include <case_insensitive_string.hpp> // ascii_ci_string_view
+#include <mutation.hpp>                // MutationModel::Entry
 
 struct configuration
 {
@@ -18,7 +19,7 @@ struct configuration
     std::span<MutationModel::Entry> models;
     std::chrono::seconds timeout;
     std::uint64_t n_jobs;
-    std::span<const std::string_view> mutants;
+    std::span<const ascii_ci_string_view> mutants;
     bool check_compiler_version;
 };
 

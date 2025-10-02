@@ -28,9 +28,10 @@
 #include <minizinc/parser.hh>        // MiniZinc::parse
 #include <minizinc/prettyprinter.hh> // MiniZinc::Printer
 
-#include <build/config.hpp> // config::is_debug_build
-#include <executor.hpp>     // MutantExecutor
-#include <logging.hpp>      // logd, logging::code, logging::Color, logging::Style
+#include <build/config.hpp>            // config::is_debug_build
+#include <case_insensitive_string.hpp> // ascii_ci_string_view
+#include <executor.hpp>                // MutantExecutor
+#include <logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
 
 namespace
 {
@@ -173,7 +174,7 @@ void MutationModel::Mutator::vBinOp(MiniZinc::BinOp* binOp)
 
     if (operators.empty())
         logd("MutationModel::Mutator::vBinOp: Undetected mutation type");
-    else if (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, operator_name))
+    else if (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { operator_name }))
         perform_mutation(binOp, operators, operator_name);
 }
 
@@ -181,7 +182,7 @@ void MutationModel::Mutator::vUnOp(MiniZinc::UnOp* unOp)
 {
     logd("vUnOp: Detected operation {}", unOp->opToString().c_str());
 
-    if (std::ranges::contains(unary_operators, unOp->op()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, unary_operators_name)))
+    if (std::ranges::contains(unary_operators, unOp->op()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { unary_operators_name })))
         perform_mutation(unOp, unary_operators, unary_operators_name);
     else
         logd("MutationModel::Mutator::vUnOp: Undetected mutation type");
@@ -191,7 +192,7 @@ void MutationModel::Mutator::vCall(MiniZinc::Call* call)
 {
     logd("vCall: Detected call to {}", call->id().c_str());
 
-    if (std::ranges::contains(calls, call->id()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, call_name)))
+    if (std::ranges::contains(calls, call->id()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { call_name })))
         perform_mutation(call, calls, call_name);
     else
         logd("MutationModel::Mutator::vCall: Unhandled call operation");
@@ -286,7 +287,7 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<co
     call->id(original_call);
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path, std::span<const std::string_view> allowed_operators) :
+MutationModel::MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators) :
     m_model_path { std::filesystem::absolute(path) }, m_allowed_operators { allowed_operators }
 {
     for (const auto mutant : m_allowed_operators)
@@ -315,7 +316,7 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::span<const 
     m_filename_stem = m_model_path.stem().generic_string();
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const std::string_view> allowed_operators) :
+MutationModel::MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const ascii_ci_string_view> allowed_operators) :
     MutationModel { path, allowed_operators }
 {
     // Create the folder that will hold all the mutant code.
@@ -500,7 +501,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const std::string_view> mutants, bool check_compiler_version)
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
@@ -544,9 +545,9 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
 
             if (!m_allowed_operators.empty())
             {
-                std::string_view entry_view = *stem;
+                ascii_ci_string_view entry_view { *stem };
 
-                if (const auto pos = entry_view.find_first_not_of(m_filename_stem); pos != std::string_view::npos)
+                if (const auto pos = entry_view.find_first_not_of(ascii_ci_string_view { m_filename_stem }); pos != ascii_ci_string_view::npos)
                     entry_view = entry_view.substr(pos + 1);
 
                 if (std::ranges::none_of(m_allowed_operators, [entry_view](auto op)
@@ -554,7 +555,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
                     continue;
             }
 
-            if (!mutants.empty() && !std::ranges::contains(mutants, std::string_view { *stem }))
+            if (!mutants.empty() && !std::ranges::contains(mutants, ascii_ci_string_view { *stem }))
                 continue;
 
             const std::ifstream ifstream { entry.path() };

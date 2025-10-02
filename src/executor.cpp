@@ -30,8 +30,9 @@
 #include <boost/system/error_code.hpp>   // boost::system::error_code
 #include <boost/utility/string_view.hpp> // boost::string_view
 
-#include <logging.hpp>  // logging::code, logging::Style
-#include <mutation.hpp> // MutationModel::Entry
+#include <case_insensitive_string.hpp> // ascii_ci_string_view
+#include <logging.hpp>                 // logging::code, logging::Style
+#include <mutation.hpp>                // MutationModel::Entry
 
 namespace
 {
@@ -228,7 +229,7 @@ void execute_mutants(const configuration& configuration)
 
     for (auto& mutant : configuration.models | std::ranges::views::drop(1))
     {
-        if (!configuration.mutants.empty() && !std::ranges::contains(configuration.mutants, mutant.name))
+        if (!configuration.mutants.empty() && !std::ranges::contains(configuration.mutants, ascii_ci_string_view { mutant.name }))
             continue;
 
         mutant.results.resize(original_outputs.size(), MutationModel::Entry::Status::Alive);
