@@ -501,7 +501,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     }
 }
 
-std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version)
+std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version, bool check_model_last_modified_time)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
@@ -522,7 +522,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
         m_memory.emplace_back(m_filename_stem, std::move(buffer).str());
 
         std::error_code last_write_ec {};
-        const auto last_write_time_original { std::filesystem::last_write_time(m_model_path, last_write_ec) };
+        const auto last_write_time_original = check_model_last_modified_time ? std::filesystem::last_write_time(m_model_path, last_write_ec) : std::filesystem::file_time_type::min();
 
         // Insert all the mutants found in the folder, but skip the original model.
         for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
@@ -532,7 +532,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
             if (!stem)
                 throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
 
-            if (!last_write_ec)
+            if (last_write_time_original > std::filesystem::file_time_type::min() && !last_write_ec)
             {
                 const auto last_write_time_mutant { std::filesystem::last_write_time(entry, last_write_ec) };
 

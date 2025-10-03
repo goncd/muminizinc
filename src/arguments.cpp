@@ -155,6 +155,12 @@ constexpr Option option_ignore_version_check {
     .help = "Ignore the compiler's version check"
 };
 
+constexpr Option option_ignore_model_timestamp {
+    .name = "--ignore-model-timestamp",
+    .short_name = {},
+    .help = "Continue even if the model is newer than the mutants"
+};
+
 constexpr std::array analyse_parameters {
     option_directory,
     option_help,
@@ -177,7 +183,8 @@ constexpr std::array run_parameters {
     option_output,
     option_include,
     option_mutant,
-    option_ignore_version_check
+    option_ignore_version_check,
+    option_ignore_model_timestamp,
 };
 
 constexpr std::array clean_parameters {
@@ -308,7 +315,7 @@ int help_subcommand(const Command& command)
         {}, [](const Option& option)
         { return option.name.length(); });
 
-    const auto lagest_option_length = largest_option->name.length() - (largest_option->short_name.empty() ? 4 : 0);
+    const auto lagest_option_length = largest_option->name.length();
 
     if (largest_option != command.options.end())
     {
@@ -318,7 +325,7 @@ int help_subcommand(const Command& command)
             if (option.short_name.empty())
                 std::println("  {:<{}}  {}", option.name, lagest_option_length, option.help);
             else
-                std::println("  {}, {:<{}}  {}", option.short_name, option.name, lagest_option_length, option.help);
+                std::println("  {}, {:<{}}  {}", option.short_name, option.name, lagest_option_length - (largest_option->short_name.empty() ? 4 : 0), option.help);
         }
     }
 
@@ -421,13 +428,21 @@ int run(std::span<const std::string_view> arguments)
     std::vector<std::string> data_files;
     std::vector<ascii_ci_string_view> mutants;
     bool check_compiler_version { true };
+    bool check_model_last_modified_time { true };
 
     std::uint64_t timeout_seconds { DEFAULT_TIMEOUT_S };
 #undef DEFAULT_TIMEOUT_S
 
     for (std::size_t i {}; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_ignore_version_check)
+        if (arguments[i] == option_ignore_model_timestamp)
+        {
+            if (in_memory)
+                throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_ignore_model_timestamp.name, option_in_memory.name) };
+
+            check_model_last_modified_time = false;
+        }
+        else if (arguments[i] == option_ignore_version_check)
             check_compiler_version = false;
         else if (arguments[i] == option_mutant)
         {
@@ -552,6 +567,9 @@ int run(std::span<const std::string_view> arguments)
             if (!output_directory.empty())
                 throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_in_memory.name, option_directory.name) };
 
+            if (!check_model_last_modified_time)
+                throw std::runtime_error { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_in_memory.name, option_ignore_model_timestamp.name) };
+
             in_memory = true;
         }
         else if (arguments[i] == end_of_options_token)
@@ -605,7 +623,7 @@ int run(std::span<const std::string_view> arguments)
 
         try
         {
-            entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants, check_compiler_version) | std::views::drop(1);
+            entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants, check_compiler_version, check_model_last_modified_time) | std::views::drop(1);
         }
         catch (const BadVersion& bad_version)
         {
