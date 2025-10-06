@@ -20,6 +20,16 @@
 class MutationModel
 {
 public:
+    class OutdatedMutant : public std::runtime_error
+    {
+        using std::runtime_error::runtime_error;
+    };
+
+    class IOError : public std::runtime_error
+    {
+        using std::runtime_error::runtime_error;
+    };
+
     // Constructs a MutationModel that works only in memory.
     explicit MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators = {});
 

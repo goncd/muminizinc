@@ -82,7 +82,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
         boost::asio::write(in_pipe, boost::asio::buffer(job.contents), error_code);
 
         if (error_code && !(error_code == boost::asio::error::eof))
-            throw std::runtime_error { "Cannot write the input." };
+            throw ExecutionError { "Cannot write the input." };
     }
 
     in_pipe.close();
@@ -108,14 +108,14 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
             boost::asio::read(exit_code == EXIT_SUCCESS ? out_pipe : err_pipe, boost::asio::dynamic_buffer(output), error_code);
 
             if (error_code != boost::asio::error::eof)
-                throw std::runtime_error { "Cannot grab the output of the executable." };
+                throw ExecutionError { "Cannot grab the output of the executable." };
 
             if constexpr(std::is_same_v<Job, OriginalJob>)
             {
                 if (exit_code != EXIT_SUCCESS)
                 {
                     std::println(); // Print a new line so the exception message is below the progress text.
-                    throw std::runtime_error { std::format("Could not run the original model:\n{:s}", output) };
+                    throw ExecutionError { std::format("Could not run the original model:\n{:s}", output) };
                 }
 
                 job.output = std::move(output);
@@ -183,7 +183,7 @@ void execute_mutants(const configuration& configuration)
         }
 
         if (!found)
-            throw std::runtime_error { std::format("Unknown mutant `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
+            throw UnknownMutant { std::format("Unknown mutant `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
     }
 
     // Set the arguments for the executable.

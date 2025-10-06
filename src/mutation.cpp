@@ -308,10 +308,10 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::span<const 
     }
 
     if (!std::filesystem::is_regular_file(m_model_path))
-        throw std::runtime_error { "Could not open the requested file." };
+        throw IOError { "Could not open the requested file." };
 
     if (!m_model_path.has_stem())
-        throw std::runtime_error { "Could not determine the filename without extension of the model." };
+        throw IOError { "Could not determine the filename without extension of the model." };
 
     m_filename_stem = m_model_path.stem().generic_string();
 }
@@ -323,7 +323,7 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::string_view
     // First, we need to determine the name of the folder.
     // If the given path is /test_file.mzn, then the folder will be /test_file/.
     if ((output_directory.empty() && !m_model_path.has_relative_path()))
-        throw std::runtime_error { "Could not automatically determine the path for storing the mutants." };
+        throw IOError { "Could not automatically determine the path for storing the mutants." };
 
     m_mutation_folder_path = std::filesystem::absolute(output_directory.empty() ? m_model_path.parent_path() / std::format("{:s}-mutants", m_filename_stem) : output_directory);
 }
@@ -339,11 +339,11 @@ void MutationModel::clear_output_folder()
     }
 
     if (!std::filesystem::is_directory(m_mutation_folder_path))
-        throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
+        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
 
     for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         if (!get_stem_if_valid(entry))
-            throw std::runtime_error { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
+            throw IOError { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
 
     std::filesystem::remove_all(m_mutation_folder_path);
 }
@@ -363,12 +363,12 @@ bool MutationModel::find_mutants(std::string&& include_path)
     buffer << ifstream.rdbuf();
 
     if (ifstream.bad())
-        throw std::runtime_error { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
+        throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
 
     auto original_model_str = std::move(buffer).str();
 
     if (original_model_str.empty())
-        throw std::runtime_error { "Empty file given. Nothing to do." };
+        throw IOError { "Empty file given. Nothing to do." };
 
     std::vector<std::string> include_paths;
 
@@ -475,7 +475,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
         if (mutant_name.empty())
         {
             if (!m_memory.front().name.empty())
-                throw std::runtime_error { "Trying to store the original source more than once." };
+                throw IOError { "Trying to store the original source more than once." };
 
             m_memory.front().name = m_filename_stem;
             m_memory.front().contents = std::move(output);
@@ -490,12 +490,12 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
         const auto path = (m_mutation_folder_path / (mutant_name.empty() ? m_filename_stem : mutant)).replace_extension(EXTENSION);
 
         if (std::filesystem::exists(path))
-            throw std::runtime_error { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.native()) };
+            throw IOError { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.native()) };
 
         std::ofstream file { path };
 
         if (!file.is_open())
-            throw std::runtime_error { std::format(R"(Could not open the mutant file "{:s}")", path.native()) };
+            throw IOError { std::format(R"(Could not open the mutant file "{:s}".)", path.native()) };
 
         file << output;
     }
@@ -504,7 +504,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
 std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version, bool check_model_last_modified_time)
 {
     if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
-        throw std::runtime_error { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
+        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
 
     if (m_mutation_folder_path.empty() && m_memory.size() == 1)
         throw std::runtime_error { "Couldn't run any mutants because there aren't any." };
@@ -517,7 +517,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
         buffer << ifstream.rdbuf();
 
         if (ifstream.bad())
-            throw std::runtime_error { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
+            throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
 
         m_memory.emplace_back(m_filename_stem, std::move(buffer).str());
 
@@ -537,7 +537,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
                 const auto last_write_time_mutant { std::filesystem::last_write_time(entry, last_write_ec) };
 
                 if (!last_write_ec && last_write_time_original > last_write_time_mutant)
-                    throw std::runtime_error { "The original model is newer than the mutants, so they might be outdated. Please re-analyse the original model." };
+                    throw OutdatedMutant { "The original model is newer than the mutants, so they might be outdated. Please re-analyse the original model." };
             }
 
             if (*stem == m_filename_stem)
@@ -563,7 +563,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
             buffer << ifstream.rdbuf();
 
             if (ifstream.bad())
-                throw std::runtime_error { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
+                throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
 
             m_memory.emplace_back(*std::move(stem), std::move(buffer).str());
         }

@@ -28,6 +28,16 @@ class BadVersion : public std::runtime_error
     using std::runtime_error::runtime_error;
 };
 
+class UnknownMutant : public std::runtime_error
+{
+    using std::runtime_error::runtime_error;
+};
+
+class ExecutionError : public std::runtime_error
+{
+    using std::runtime_error::runtime_error;
+};
+
 void execute_mutants(const configuration& configuration);
 
 #endif
