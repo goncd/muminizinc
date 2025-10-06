@@ -442,13 +442,15 @@ bool MutationModel::find_mutants(std::string&& include_path)
 
     Mutator mutator { *this };
 
-    for (const auto* item : *m_model)
+    for (const auto* const item : *m_model)
     {
-        if (const auto* varDeclI = item->dynamicCast<MiniZinc::VarDeclI>())
+        if (const auto* const varDeclI = item->dynamicCast<MiniZinc::VarDeclI>())
         {
-            const auto* expression = varDeclI->e();
+            const auto* const expression = varDeclI->e();
 
-            if (!expression->ti()->isEnum())
+            const auto* const type_inst = expression->ti();
+
+            if (type_inst == nullptr || !type_inst->isEnum())
                 continue;
 
             const auto str = expression->id()->v();
@@ -461,7 +463,7 @@ bool MutationModel::find_mutants(std::string&& include_path)
         }
     }
 
-    for (const auto* item : *m_model)
+    for (const auto* const item : *m_model)
     {
         if (const auto* constraintI = item->dynamicCast<MiniZinc::ConstraintI>())
             MiniZinc::top_down(mutator, constraintI->e());
