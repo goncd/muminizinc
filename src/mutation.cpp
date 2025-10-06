@@ -1,13 +1,13 @@
 #include <mutation.hpp>
 
-#include <algorithm>    // std::ranges::contains
-#include <array>        // std::array, std::end
+#include <algorithm>    // std::ranges::contains, std::ranges::equal, std::ranges::next_permutation
+#include <array>        // std::array
 #include <chrono>       // std::chrono::seconds
 #include <cstddef>      // std::size_t
 #include <cstdint>      // std::uint64_t
 #include <filesystem>   // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
 #include <format>       // std::format
-#include <fstream>      // std::fstream
+#include <fstream>      // std::ifstream
 #include <iostream>     // std::cerr, std::cout
 #include <optional>     // std::optional
 #include <print>        // std::println
@@ -80,12 +80,14 @@ const std::array calls {
 };
 
 constexpr auto call_name { "CALL"sv };
+constexpr auto call_swap_name { "SWP"sv };
 
 constexpr std::array mutant_help {
     std::pair { relational_operators_name, "Relational operators"sv },
     std::pair { arithmetic_operators_name, "Arithmetic operators"sv },
     std::pair { unary_operators_name, "Unary operators"sv },
-    std::pair { call_name, "Function calls"sv }
+    std::pair { call_name, "Function calls"sv },
+    std::pair { call_swap_name, "Function call argument swapping"sv }
 };
 
 constexpr bool is_quoted(std::string_view view) noexcept
@@ -134,7 +136,7 @@ public:
 
     void vCall(MiniZinc::Call* call);
 
-    [[nodiscard]] constexpr auto generated_mutants() const noexcept { return m_mutation_BinOp_count + m_mutation_UnOp_count + m_mutation_Call_count; }
+    [[nodiscard]] constexpr auto generated_mutants() const noexcept { return m_mutation_BinOp_count + m_mutation_UnOp_count + m_mutation_Call_count + m_mutation_Call_swap_count; }
 
 private:
     MutationModel& m_mutation_model;
@@ -147,6 +149,9 @@ private:
 
     void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls, std::string_view operator_name);
     std::uint64_t m_mutation_Call_count {};
+
+    void perform_call_swap_mutation(MiniZinc::Call* call);
+    std::uint64_t m_mutation_Call_swap_count {};
 };
 
 constexpr MutationModel::Mutator::Mutator(MutationModel& mutation_model) noexcept :
@@ -191,6 +196,9 @@ void MutationModel::Mutator::vUnOp(MiniZinc::UnOp* unOp)
 void MutationModel::Mutator::vCall(MiniZinc::Call* call)
 {
     logd("vCall: Detected call to {}", call->id().c_str());
+
+    if (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { call_swap_name }))
+        perform_call_swap_mutation(call);
 
     if (std::ranges::contains(calls, call->id()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { call_name })))
         perform_mutation(call, calls, call_name);
@@ -285,6 +293,36 @@ void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<co
     }
 
     call->id(original_call);
+}
+
+void MutationModel::Mutator::perform_call_swap_mutation(MiniZinc::Call* call)
+{
+    if (call->argCount() <= 1)
+        return;
+
+    logd("Mutating argument order of call to {:s}.", call->id().c_str());
+
+    const auto calls { call->args() };
+    const std::vector original(calls.begin(), calls.end());
+
+    auto permutation { original };
+
+    std::ranges::sort(permutation);
+
+    std::uint64_t occurrence_id {};
+
+    do
+    {
+        if (std::ranges::equal(permutation, original))
+            continue;
+
+        call->args(permutation);
+
+        m_mutation_model.save_current_model("SWP", m_mutation_Call_swap_count++, occurrence_id++);
+
+    } while (std::ranges::next_permutation(permutation).found);
+
+    call->args(original);
 }
 
 MutationModel::MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators) :
