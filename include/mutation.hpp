@@ -16,6 +16,7 @@
 #define MZN_VERSION_FULL "version " MZN_VERSION
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
+#include <logging.hpp>                 // logging::output
 
 class MutationModel
 {
@@ -48,10 +49,10 @@ public:
     MutationModel() = default;
 
     // Constructs a MutationModel that works only in memory.
-    explicit MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators = {});
+    explicit MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators = {}, std::optional<std::reference_wrapper<std::ostream>> output_stream = std::nullopt);
 
     // Constructs a MutationModel that works with a filesystem.
-    explicit MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators = {});
+    explicit MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators = {}, std::optional<std::reference_wrapper<std::ostream>> output_stream = std::nullopt);
 
     bool find_mutants(std::string&& include_path = {});
 
@@ -106,6 +107,8 @@ private:
 
     std::vector<std::pair<std::string, std::string>> m_detected_enums;
     void fix_enums(std::string& model);
+
+    logging::output m_output;
 };
 
 #endif

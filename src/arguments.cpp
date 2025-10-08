@@ -409,7 +409,7 @@ int analyse(std::span<const std::string_view> arguments)
 
     try
     {
-        auto model = in_memory ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
+        auto model = in_memory ? MutationModel { model_path, operators, std::cout } : MutationModel { model_path, output_directory, operators, std::cout };
 
         model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
     }
@@ -615,7 +615,7 @@ int run(std::span<const std::string_view> arguments)
 
     try
     {
-        model = (in_memory) ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
+        model = (in_memory) ? MutationModel { model_path, operators, std::cout } : MutationModel { model_path, output_directory, operators, std::cout };
     }
     catch (const MutationModel::UnknownOperator& unknown_operator)
     {
@@ -719,7 +719,7 @@ int clean(std::span<const std::string_view> arguments)
     if (model_path.empty())
         throw BadArgument { std::format("{:s}: Missing model path.", command_clean.option.name) };
 
-    MutationModel model { model_path, output_directory };
+    MutationModel model { model_path, output_directory, {}, std::cout };
 
     model.clear_output_folder();
 

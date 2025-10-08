@@ -6,9 +6,7 @@
 #include <cstdlib>     // EXIT_SUCCESS
 #include <filesystem>  // std::filesystem::path
 #include <format>      // std::format
-#include <iostream>    // std::cout
 #include <memory>      // std::make_unique
-#include <print>       // std::print
 #include <queue>       // std::queue
 #include <ranges>      // std::views::drop
 #include <span>        // std::span
@@ -31,7 +29,7 @@
 #include <boost/utility/string_view.hpp> // boost::string_view
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <logging.hpp>                 // logging::code, logging::Style
+#include <logging.hpp>                 // logging::code, logging::Style, logging::output
 #include <mutation.hpp>                // MutationModel::Entry
 
 namespace
@@ -54,7 +52,7 @@ struct MutantJob
 
 template<typename Job>
     requires std::is_same_v<Job, OriginalJob> || std::is_same_v<Job, MutantJob>
-void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& path, std::chrono::seconds timeout, std::queue<Job>& jobs, std::span<boost::string_view> arguments, std::uint64_t& completed_tasks, double total_tasks)
+void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& path, std::chrono::seconds timeout, std::queue<Job>& jobs, std::span<boost::string_view> arguments, std::uint64_t& completed_tasks, double total_tasks, logging::output logging_output)
 {
     if (jobs.empty())
         return;
@@ -87,15 +85,19 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
 
     in_pipe.close();
 
-    process->async_wait([&ctx, &path, timeout, &jobs, arguments, &completed_tasks, total_tasks, out_pipe = std::move(out_pipe), err_pipe = std::move(err_pipe), job = std::move(job), process = std::move(process)](boost::system::error_code ec, int exit_code) mutable
+    process->async_wait([&ctx, &path, timeout, &jobs, arguments, &completed_tasks, logging_output, total_tasks, out_pipe = std::move(out_pipe), err_pipe = std::move(err_pipe), job = std::move(job), process = std::move(process)](boost::system::error_code ec, int exit_code) mutable
         {
             ++completed_tasks;
-            std::print("{:s}{:s}Progress{:s}: {:d} of {:g} execution{:s}({:0.2f}%)", logging::carriage_return(), logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), completed_tasks, total_tasks, total_tasks > 1 ? "s " : " ", static_cast<double>(completed_tasks) / total_tasks * 100);
 
-            if (logging::have_color_output())
-                std::cout.flush();
-            else
-                std::println();
+            if(logging_output.has_value())
+            {
+                logging_output.print("{:s}{:s}Progress{:s}: {:d} of {:g} execution{:s}({:0.2f}%)", logging::carriage_return(), logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), completed_tasks, total_tasks, total_tasks > 1 ? "s " : " ", static_cast<double>(completed_tasks) / total_tasks * 100);
+
+                if (logging::have_color_output())
+                    logging_output.get_stream()->flush();
+                else
+                    logging_output.println();
+            }
 
             // If an error occurred, don't do anything.
             if (ec)
@@ -114,7 +116,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
             {
                 if (exit_code != EXIT_SUCCESS)
                 {
-                    std::println(); // Print a new line so the exception message is below the progress text.
+                    logging_output.println(); // Print a new line so the exception message is below the progress text.
                     throw ExecutionError { std::format("Could not run the original model:\n{:s}", output) };
                 }
 
@@ -130,7 +132,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
                     job.status = MutationModel::Entry::Status::Dead;
             }
 
-            launch_process(ctx, path, timeout, jobs, arguments,completed_tasks, total_tasks); });
+            launch_process(ctx, path, timeout, jobs, arguments,completed_tasks, total_tasks, logging_output); });
 }
 
 void check_version(boost::asio::io_context& ctx, const std::filesystem::path& path)
@@ -256,15 +258,15 @@ void execute_mutants(const configuration& configuration)
     std::uint64_t completed_tasks {};
 
     for (std::size_t i {}; (configuration.n_jobs == 0 || i < configuration.n_jobs) && !original_jobs.empty(); ++i)
-        launch_process(ctx, configuration.path, configuration.timeout, original_jobs, arguments, completed_tasks, total_tasks);
+        launch_process(ctx, configuration.path, configuration.timeout, original_jobs, arguments, completed_tasks, total_tasks, configuration.logging_output);
 
     ctx.run();
 
     for (std::size_t i {}; (configuration.n_jobs == 0 || i < configuration.n_jobs) && !mutant_jobs.empty(); ++i)
-        launch_process(ctx, configuration.path, configuration.timeout, mutant_jobs, arguments, completed_tasks, total_tasks);
+        launch_process(ctx, configuration.path, configuration.timeout, mutant_jobs, arguments, completed_tasks, total_tasks, configuration.logging_output);
 
     ctx.restart();
     ctx.run();
 
-    std::print("\n\n");
+    logging::output { configuration.logging_output }.print("\n\n");
 }

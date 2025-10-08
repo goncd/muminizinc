@@ -15,7 +15,7 @@ BOOST_AUTO_TEST_CASE(empty_model)
 
     BOOST_REQUIRE_THROW(mutation_model.find_mutants({}), MutationModel::EmptyFile);
 
-    BOOST_CHECK(!std::filesystem::exists("data/empty-mutants/"));
+    BOOST_REQUIRE(!std::filesystem::exists("data/empty-mutants/"));
 }
 
 BOOST_AUTO_TEST_CASE(empty_mutant)
@@ -26,13 +26,13 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
     const std::filesystem::path mutant_folder_path { "data/empty-mutant-test" };
     const std::filesystem::path model_path { std::format("data/{:s}", model_filename) };
 
-    BOOST_CHECK(!std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 
     MutationModel mutation_model { model_path, mutant_folder_path };
 
-    BOOST_CHECK_NO_THROW(mutation_model.find_mutants());
+    BOOST_REQUIRE_NO_THROW(mutation_model.find_mutants());
 
-    BOOST_CHECK(std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(std::filesystem::exists(mutant_folder_path));
 
     // Select the first mutant that is not the normalized model and empty it.
     for (const auto& entry : std::filesystem::directory_iterator { mutant_folder_path })
@@ -50,7 +50,7 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
 
     mutation_model.clear_output_folder();
 
-    BOOST_CHECK(!std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 }
 
 BOOST_AUTO_TEST_CASE(invalid_file)
@@ -61,13 +61,13 @@ BOOST_AUTO_TEST_CASE(invalid_file)
     const std::filesystem::path mutant_folder_path { "data/invalid-file-test" };
     const std::filesystem::path model_path { std::format("data/{:s}", model_filename) };
 
-    BOOST_CHECK(!std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 
     MutationModel mutation_model { model_path, mutant_folder_path };
 
-    BOOST_CHECK_NO_THROW(mutation_model.find_mutants());
+    BOOST_REQUIRE_NO_THROW(mutation_model.find_mutants());
 
-    BOOST_CHECK(std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(std::filesystem::exists(mutant_folder_path));
 
     // Create a file with a fake name.
     std::ofstream file { mutant_folder_path / "fake_file" };
@@ -78,14 +78,14 @@ BOOST_AUTO_TEST_CASE(invalid_file)
 
     BOOST_CHECK_THROW(mutation_model.clear_output_folder(), MutationModel::InvalidFile);
 
-    BOOST_CHECK(std::filesystem::remove_all(mutant_folder_path));
+    BOOST_REQUIRE(std::filesystem::remove_all(mutant_folder_path));
 }
 
 BOOST_AUTO_TEST_CASE(no_mutants_detected)
 {
     MutationModel mutation_model { "data/no_mutants.mzn" };
 
-    BOOST_CHECK(!mutation_model.find_mutants({}));
+    BOOST_REQUIRE(!mutation_model.find_mutants({}));
 }
 
 BOOST_AUTO_TEST_CASE(outdated_mutant)
@@ -97,13 +97,13 @@ BOOST_AUTO_TEST_CASE(outdated_mutant)
     const std::filesystem::path model_path { std::format("data/{:s}", model_filename) };
     const std::filesystem::path normalized_model_path { mutant_folder_path / model_filename };
 
-    BOOST_CHECK(!std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 
     MutationModel mutation_model { model_path, mutant_folder_path };
 
-    BOOST_CHECK_NO_THROW(mutation_model.find_mutants());
+    BOOST_REQUIRE_NO_THROW(mutation_model.find_mutants());
 
-    BOOST_CHECK(std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(std::filesystem::exists(mutant_folder_path));
 
     // Set the time of the normalized model to the least possible (plus an hour) to make the original mutant newer,
     // thus triggering the outdated mutant exception.
@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(outdated_mutant)
 
     mutation_model.clear_output_folder();
 
-    BOOST_CHECK(!std::filesystem::exists(mutant_folder_path));
+    BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 }
 
 BOOST_AUTO_TEST_CASE(unknown_operator)

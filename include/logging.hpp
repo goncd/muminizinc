@@ -3,11 +3,12 @@
 
 #include <chrono>          // std::chrono::system_clock::now()
 #include <cstdio>          // stdout, stderr
-#include <format>          // std::format, std::vformat, std::make_format_args
+#include <format>          // std::format, std::format_string
+#include <memory>          // std::addressof
 #include <print>           // std::print
 #include <source_location> // std::source_location, std::source_location::current
 #include <string_view>     // std::string_view
-#include <utility>         // std::to_underlying
+#include <utility>         // std::forward, std::to_underlying
 
 #if defined(_WIN32)
 #    include <io.h> // _isatty, _fileno
@@ -107,16 +108,56 @@ constexpr std::string_view carriage_return() noexcept
 template<typename... Args>
 struct log
 {
-    log(std::string_view fmt, Args&&... args, const std::source_location& loc = std::source_location::current())
+    log(std::format_string<Args...> fmt, Args&&... args, const std::source_location& loc = std::source_location::current())
     {
-        std::print(stderr, "[{}{}{}] [{}{}DEBUG{}] {}:{}: {}\n", code<OutputType::StandardError>(Style::Bold), std::chrono::system_clock::now(), code<OutputType::StandardError>(Style::Reset), code<OutputType::StandardError>(Color::Blue), code<OutputType::StandardError>(Style::Bold), code<OutputType::StandardError>(Style::Reset), loc.file_name(), loc.line(), std::vformat(fmt, std::make_format_args(args...)));
+        std::print(stderr, "[{}{}{}] [{}{}DEBUG{}] {}:{}: {}\n", code<OutputType::StandardError>(Style::Bold), std::chrono::system_clock::now(), code<OutputType::StandardError>(Style::Reset), code<OutputType::StandardError>(Color::Blue), code<OutputType::StandardError>(Style::Bold), code<OutputType::StandardError>(Style::Reset), loc.file_name(), loc.line(), std::format(fmt, std::forward<Args>(args)...));
     }
 
 private:
 };
 
 template<typename... Args>
-log(std::string_view, Args&&... args) -> log<Args...>;
+log(std::format_string<Args...> fmt, Args&&... args) -> log<Args...>;
+
+class output
+{
+    using T = std::ostream;
+
+    T* m_ostream;
+
+public:
+    constexpr explicit output(T& ostream) noexcept :
+        m_ostream { std::addressof(ostream) } { };
+
+    constexpr output() noexcept :
+        m_ostream(nullptr) { }
+
+    template<typename... Args>
+    void print(std::format_string<Args...> fmt, Args&&... args)
+    {
+        if (m_ostream != nullptr)
+            std::print(*m_ostream, fmt, std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    void println(std::format_string<Args...> fmt, Args&&... args)
+    {
+        if (m_ostream != nullptr)
+            std::println(*m_ostream, fmt, std::forward<Args>(args)...);
+    }
+
+    void println()
+    {
+        if (m_ostream != nullptr)
+            std::println();
+    }
+
+    [[nodiscard]] constexpr const T* get_stream() const noexcept { return m_ostream; }
+    [[nodiscard]] constexpr T* get_stream() noexcept { return m_ostream; }
+
+    [[nodiscard]] constexpr bool has_value() const noexcept { return m_ostream != nullptr; }
+    [[nodiscard]] constexpr operator bool() const noexcept { return has_value(); };
+};
 
 } // namespace logging
 

@@ -9,6 +9,7 @@
 #include <string_view> // std::string_view
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
+#include <logging.hpp>                 // logging::output
 #include <mutation.hpp>                // MutationModel::Entry
 
 struct configuration
@@ -21,6 +22,7 @@ struct configuration
     std::uint64_t n_jobs;
     std::span<const ascii_ci_string_view> mutants;
     bool check_compiler_version;
+    logging::output logging_output;
 };
 
 class BadVersion : public std::runtime_error

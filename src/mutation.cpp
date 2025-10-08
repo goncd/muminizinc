@@ -8,9 +8,8 @@
 #include <filesystem>   // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
 #include <format>       // std::format
 #include <fstream>      // std::ifstream
-#include <iostream>     // std::cerr, std::cout
+#include <iostream>     // std::cerr
 #include <optional>     // std::optional
-#include <print>        // std::println
 #include <span>         // std::span
 #include <sstream>      // std::ostringstream
 #include <stdexcept>    // std::runtime_error
@@ -321,7 +320,7 @@ void MutationModel::Mutator::perform_call_swap_mutation(MiniZinc::Call* call)
     call->args(original);
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators) :
+MutationModel::MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators, std::optional<std::reference_wrapper<std::ostream>> output_stream) :
     m_model_path { std::filesystem::absolute(path) }, m_allowed_operators { allowed_operators }
 {
     for (const auto mutant : m_allowed_operators)
@@ -348,10 +347,13 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::span<const 
         throw IOError { "Could not determine the filename without extension of the model." };
 
     m_filename_stem = m_model_path.stem().generic_string();
+
+    if (output_stream.has_value())
+        m_output = logging::output(*output_stream);
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators) :
-    MutationModel { path, allowed_operators }
+MutationModel::MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators, std::optional<std::reference_wrapper<std::ostream>> output_stream) :
+    MutationModel { path, allowed_operators, output_stream }
 {
     // Create the folder that will hold all the mutant code.
     // First, we need to determine the name of the folder.
@@ -472,10 +474,10 @@ bool MutationModel::find_mutants(std::string&& include_path)
     const auto generated_mutants = mutator.generated_mutants();
 
     if (generated_mutants == 0)
-        std::println("Couldn't detect any mutants.");
+        m_output.println("Couldn't detect any mutants.");
     else
     {
-        std::println("\nGenerated {:s}{:d}{:s} mutants.", logging::code(logging::Color::Blue), generated_mutants, logging::code(logging::Style::Reset));
+        m_output.println("\nGenerated {:s}{:d}{:s} mutants.", logging::code(logging::Color::Blue), generated_mutants, logging::code(logging::Style::Reset));
 
         // Save the original file passed through the compiler to normalize it so we can
         // diff from it cleanly. Only print it if we actually detected any mutants at all, though.
@@ -503,7 +505,7 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     if (!mutant_name.empty())
     {
         mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_filename_stem, SEPARATOR, mutant_name, SEPARATOR, mutant_id, SEPARATOR, occurrence_id);
-        std::println("Generating mutant `{:s}{:s}{:s}`", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset));
+        m_output.println("Generating mutant `{:s}{:s}{:s}`", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset));
     }
 
     if (m_mutation_folder_path.empty())
@@ -618,7 +620,8 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
         .timeout = timeout,
         .n_jobs = n_jobs,
         .mutants = mutants,
-        .check_compiler_version = check_compiler_version
+        .check_compiler_version = check_compiler_version,
+        .logging_output = m_output
     };
 
     execute_mutants(configuration);
