@@ -420,7 +420,7 @@ bool MutationModel::find_mutants(std::string&& include_path)
         include_paths.emplace_back(std::format("{:s}/std/", share_directory_result));
     }
 
-    m_model = MiniZinc::parse(env, {}, {}, original_model_str, m_filename_stem, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
+    m_model = MiniZinc::parse(env, {}, {}, original_model_str, m_model_path, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
 
     if (m_mutation_folder_path.empty())
         m_memory.emplace_back();

@@ -19,7 +19,9 @@ int main(int argc, const char** argv)
     }
     catch (const MiniZinc::Exception& e)
     {
-        std::println(std::cerr, "{}{}MiniZinc compiler error{}: {:s}", logging::code<logging::OutputType::StandardError>(logging::Style::Bold), logging::code<logging::OutputType::StandardError>(logging::Color::Red), logging::code<logging::OutputType::StandardError>(logging::Style::Reset), e.msg());
+        std::println(std::cerr, "{}{}MiniZinc compiler error{}:", logging::code<logging::OutputType::StandardError>(logging::Style::Bold), logging::code<logging::OutputType::StandardError>(logging::Color::Red), logging::code<logging::OutputType::StandardError>(logging::Style::Reset));
+
+        e.print(std::cerr);
 
         return EXIT_FAILURE;
     }
