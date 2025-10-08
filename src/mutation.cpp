@@ -126,10 +126,6 @@ class MutationModel::Mutator : public MiniZinc::EVisitor
 public:
     constexpr explicit Mutator(MutationModel& mutation_model) noexcept;
 
-    void vVarDecl(const MiniZinc::VarDecl* /*vd*/) {
-
-    };
-
     void vBinOp(MiniZinc::BinOp* binOp);
 
     void vUnOp(MiniZinc::UnOp* unOp);
@@ -342,7 +338,7 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::span<const 
         }
 
         if (!found)
-            throw std::runtime_error { std::format("Unknown operator `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
+            throw UnknownOperator { std::format("Unknown operator `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
     }
 
     if (!std::filesystem::is_regular_file(m_model_path))
@@ -354,7 +350,7 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::span<const 
     m_filename_stem = m_model_path.stem().generic_string();
 }
 
-MutationModel::MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const ascii_ci_string_view> allowed_operators) :
+MutationModel::MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators) :
     MutationModel { path, allowed_operators }
 {
     // Create the folder that will hold all the mutant code.
@@ -381,7 +377,7 @@ void MutationModel::clear_output_folder()
 
     for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
         if (!get_stem_if_valid(entry))
-            throw IOError { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
+            throw InvalidFile { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
 
     std::filesystem::remove_all(m_mutation_folder_path);
 }
@@ -406,7 +402,7 @@ bool MutationModel::find_mutants(std::string&& include_path)
     auto original_model_str = std::move(buffer).str();
 
     if (original_model_str.empty())
-        throw IOError { "Empty file given. Nothing to do." };
+        throw EmptyFile { "Empty file given. Nothing to do." };
 
     std::vector<std::string> include_paths;
 
@@ -570,7 +566,7 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
             const auto stem = get_stem_if_valid(entry);
 
             if (!stem)
-                throw std::runtime_error { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
+                throw InvalidFile { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
 
             if (last_write_time_original > std::filesystem::file_time_type::min() && !last_write_ec)
             {
@@ -605,7 +601,12 @@ std::span<const MutationModel::Entry> MutationModel::run_mutants(const std::file
             if (ifstream.bad())
                 throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
 
-            m_memory.emplace_back(*std::move(stem), std::move(buffer).str());
+            auto str = std::move(buffer).str();
+
+            if (str.empty())
+                throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), entry.path().native(), code(logging::Style::Reset)) };
+
+            m_memory.emplace_back(*std::move(stem), std::move(str));
         }
     }
 

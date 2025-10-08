@@ -1,0 +1,1 @@
+% This is not an empty file, but no mutants should be detected

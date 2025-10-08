@@ -259,9 +259,10 @@ constexpr std::array commands {
     command_color_option
 };
 
-void throw_operator_option_error(std::string_view name)
+template<typename Exception>
+void throw_operator_option_error(std::string_view message)
 {
-    auto error_string = std::format("{:s}: {:s}: Missing parameter.\n\n{}{}Available operators{}:", name, option_operator.name, logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
+    auto error_string = std::format("{:s}\n\n{:s}{:s}Available operators{:s}:", message, logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
 
     const auto available_operators = MutationModel::get_available_operators();
 
@@ -273,7 +274,7 @@ void throw_operator_option_error(std::string_view name)
     for (const auto& [name, help] : MutationModel::get_available_operators())
         error_string += std::format("\n  {:<{}}  {}", name, largest_operator + 2, help);
 
-    throw BadArgument { error_string };
+    throw Exception { error_string };
 }
 
 int print_help()
@@ -370,7 +371,7 @@ int analyse(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_operator)
         {
             if (i + 1 >= arguments.size())
-                throw_operator_option_error(command_analyse.option.name);
+                throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", command_analyse.option.name, option_operator.name));
 
             for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
                 operators.emplace_back(op);
@@ -406,9 +407,16 @@ int analyse(std::span<const std::string_view> arguments)
     if (model_path.empty())
         throw BadArgument { std::format("{:s}: Missing model path.", command_analyse.option.name) };
 
-    auto model = in_memory ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
+    try
+    {
+        auto model = in_memory ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
 
-    model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
+        model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
+    }
+    catch (const MutationModel::UnknownOperator& unknown_operator)
+    {
+        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", command_analyse.option.name, unknown_operator.what()));
+    }
 
     return EXIT_SUCCESS;
 }
@@ -533,7 +541,7 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_operator)
         {
             if (i + 1 >= arguments.size())
-                throw_operator_option_error(command_run.option.name);
+                throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_operator.name));
 
             for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
                 operators.emplace_back(op);
@@ -603,7 +611,17 @@ int run(std::span<const std::string_view> arguments)
             throw BadArgument { std::format("{:s}: Could not open the output file `{:s}`.", command_run.option.name, output) };
     }
 
-    MutationModel model = (in_memory) ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
+    MutationModel model;
+
+    try
+    {
+        model = (in_memory) ? MutationModel { model_path, operators } : MutationModel { model_path, output_directory, operators };
+    }
+    catch (const MutationModel::UnknownOperator& unknown_operator)
+    {
+        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", command_run.option.name, unknown_operator.what()));
+    }
+
     bool should_run = true;
 
     if (in_memory)
@@ -720,7 +738,7 @@ int print_version()
 
 }
 
-int parse_arguments(std::span<const char*> argv)
+int parse_arguments(std::span<const char* const> argv)
 {
     if (argv.size() < 2)
         return print_help();

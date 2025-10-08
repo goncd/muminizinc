@@ -5,6 +5,9 @@ set(TEST_SOURCES
     test_mutant_relational.cpp
     test_mutant_unary.cpp
     test_mutant_calls.cpp
+    test_arguments.cpp
+    test_mutation_model.cpp
+    test_execution.cpp
 )
 
 foreach(test_file ${TEST_SOURCES})
@@ -15,9 +18,19 @@ foreach(test_file ${TEST_SOURCES})
         PRIVATE
             Boost::unit_test_framework
             ${PROJECT_NAME_LIB}
+            Boost::process
+            mzn
     )
 
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_DYN_LINK)
 
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+set(TEST_DATA_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/data")
+set(TEST_DATA_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
+
+# Copy the entire data directory to the build directory for the test executables,
+# making sure old files are deleted first.
+file(REMOVE_RECURSE ${TEST_DATA_DESTINATION})
+file(COPY ${TEST_DATA_SOURCE} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

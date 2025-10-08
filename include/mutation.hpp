@@ -30,13 +30,30 @@ public:
         using std::runtime_error::runtime_error;
     };
 
+    class EmptyFile : public IOError
+    {
+        using IOError::IOError;
+    };
+
+    class InvalidFile : public IOError
+    {
+        using IOError::IOError;
+    };
+
+    class UnknownOperator : public std::runtime_error
+    {
+        using std::runtime_error::runtime_error;
+    };
+
+    MutationModel() = default;
+
     // Constructs a MutationModel that works only in memory.
     explicit MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators = {});
 
     // Constructs a MutationModel that works with a filesystem.
-    explicit MutationModel(const std::filesystem::path& path, std::string_view output_directory, std::span<const ascii_ci_string_view> allowed_operators = {});
+    explicit MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators = {});
 
-    bool find_mutants(std::string&& include_path);
+    bool find_mutants(std::string&& include_path = {});
 
     void clear_output_folder();
 
