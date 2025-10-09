@@ -13,7 +13,7 @@ BOOST_AUTO_TEST_CASE(empty_model)
 {
     MutationModel mutation_model { "data/empty.mzn" };
 
-    BOOST_REQUIRE_THROW(mutation_model.find_mutants({}), MutationModel::EmptyFile);
+    BOOST_REQUIRE_THROW(mutation_model.find_mutants(), MutationModel::EmptyFile);
 
     BOOST_REQUIRE(!std::filesystem::exists("data/empty-mutants/"));
 }
@@ -25,6 +25,7 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
     const auto model_filename { std::format("{:s}.mzn", model) };
     const std::filesystem::path mutant_folder_path { "data/empty-mutant-test" };
     const std::filesystem::path model_path { std::format("data/{:s}", model_filename) };
+    const std::filesystem::path normalized_model_path { mutant_folder_path / model_filename };
 
     BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 
@@ -37,8 +38,8 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
     // Select the first mutant that is not the normalized model and empty it.
     for (const auto& entry : std::filesystem::directory_iterator { mutant_folder_path })
     {
-        if (entry.path() == model_path)
-            std::cout << std::format("Ignoring {}", entry.path().string());
+        if (entry.path() == normalized_model_path)
+            continue;
 
         std::filesystem::resize_file(entry.path(), 0);
 
@@ -46,7 +47,7 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
     }
 
     // Here we only care about throwing the EmptyMutant exception, so just pass default values for the compiler path, arguments, etc.
-    BOOST_CHECK_THROW(const auto result = mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::EmptyFile);
+    BOOST_CHECK_THROW(mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::EmptyFile);
 
     mutation_model.clear_output_folder();
 
@@ -74,7 +75,7 @@ BOOST_AUTO_TEST_CASE(invalid_file)
     file << "% This is a fake file";
 
     // Here we only care about throwing the EmptyMutant exception, so just pass default values for the compiler path, arguments, etc.
-    BOOST_CHECK_THROW(const auto result = mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::InvalidFile);
+    BOOST_CHECK_THROW(mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::InvalidFile);
 
     BOOST_CHECK_THROW(mutation_model.clear_output_folder(), MutationModel::InvalidFile);
 
@@ -85,7 +86,7 @@ BOOST_AUTO_TEST_CASE(no_mutants_detected)
 {
     MutationModel mutation_model { "data/no_mutants.mzn" };
 
-    BOOST_REQUIRE(!mutation_model.find_mutants({}));
+    BOOST_REQUIRE(!mutation_model.find_mutants());
 }
 
 BOOST_AUTO_TEST_CASE(outdated_mutant)
@@ -111,7 +112,7 @@ BOOST_AUTO_TEST_CASE(outdated_mutant)
     BOOST_REQUIRE(std::filesystem::last_write_time(model_path) > std::filesystem::last_write_time(normalized_model_path));
 
     // Here we only care about throwing the OutdatedMutant exception, so just pass default values for the compiler path, arguments, etc.
-    BOOST_CHECK_THROW(const auto result = mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::OutdatedMutant);
+    BOOST_CHECK_THROW(mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::OutdatedMutant);
 
     mutation_model.clear_output_folder();
 

@@ -636,11 +636,9 @@ int run(std::span<const std::string_view> arguments)
         if (in_memory)
             std::println();
 
-        std::span<const MutationModel::Entry> entries;
-
         try
         {
-            entries = model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants, check_compiler_version, check_model_last_modified_time) | std::views::drop(1);
+            model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants, check_compiler_version, check_model_last_modified_time);
         }
         catch (const BadVersion& bad_version)
         {
@@ -651,7 +649,9 @@ int run(std::span<const std::string_view> arguments)
             throw MutationModel::OutdatedMutant { std::format("{:s}\n\nTo disable the outdated mutant check, use the option `{:s}{:s}{:s}`.", outdated_mutant.what(), logging::code(logging::Color::Blue), option_ignore_model_timestamp.name, logging::code(logging::Style::Reset)) };
         }
 
-        for (const auto& entry : entries)
+        const auto entries = model.get_memory();
+
+        for (const auto& entry : model.get_memory() | std::views::drop(1))
         {
             if (entry.results.empty())
                 continue;

@@ -81,7 +81,9 @@ public:
         std::vector<Status> results;
     };
 
-    [[nodiscard]] std::span<const Entry> run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version, bool check_model_last_modified_time);
+    void run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version, bool check_model_last_modified_time);
+
+    [[nodiscard]] constexpr std::span<const Entry> get_memory() const noexcept { return m_memory; }
 
     [[nodiscard]] static std::span<const std::pair<std::string_view, std::string_view>> get_available_operators();
 
