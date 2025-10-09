@@ -649,9 +649,9 @@ int run(std::span<const std::string_view> arguments)
             throw MutationModel::OutdatedMutant { std::format("{:s}\n\nTo disable the outdated mutant check, use the option `{:s}{:s}{:s}`.", outdated_mutant.what(), logging::code(logging::Color::Blue), option_ignore_model_timestamp.name, logging::code(logging::Style::Reset)) };
         }
 
-        const auto entries = model.get_memory();
+        const auto entries = model.get_entries();
 
-        for (const auto& entry : model.get_memory() | std::views::drop(1))
+        for (const auto& entry : model.get_entries() | std::views::drop(1))
         {
             if (entry.results.empty())
                 continue;

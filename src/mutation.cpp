@@ -368,10 +368,10 @@ void MutationModel::clear_output_folder()
 {
     if (m_mutation_folder_path.empty())
     {
-        if (m_memory.empty())
+        if (m_entries.empty())
             throw std::runtime_error { "There is nothing to clear." };
 
-        m_memory.clear();
+        m_entries.clear();
     }
 
     if (!std::filesystem::is_directory(m_mutation_folder_path))
@@ -386,7 +386,7 @@ void MutationModel::clear_output_folder()
 
 void MutationModel::clear_memory() noexcept
 {
-    m_memory.clear();
+    m_entries.clear();
 }
 
 bool MutationModel::find_mutants(std::string&& include_path)
@@ -425,7 +425,7 @@ bool MutationModel::find_mutants(std::string&& include_path)
     m_model = MiniZinc::parse(env, {}, {}, original_model_str, m_model_path, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
 
     if (m_mutation_folder_path.empty())
-        m_memory.emplace_back();
+        m_entries.emplace_back();
     else
     {
         // If a folder with such name exists, then we're OK as long as it's empty. If it has contents, there might be
@@ -512,14 +512,14 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
     {
         if (mutant_name.empty())
         {
-            if (!m_memory.front().name.empty())
+            if (!m_entries.front().name.empty())
                 throw IOError { "Trying to store the original source more than once." };
 
-            m_memory.front().name = m_filename_stem;
-            m_memory.front().contents = std::move(output);
+            m_entries.front().name = m_filename_stem;
+            m_entries.front().contents = std::move(output);
         }
         else
-            m_memory.emplace_back(mutant, std::move(output));
+            m_entries.emplace_back(mutant, std::move(output));
     }
     else
     {
@@ -541,13 +541,13 @@ void MutationModel::save_current_model(std::string_view mutant_name, std::uint64
 
 void MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version, bool check_model_last_modified_time)
 {
-    if (m_memory.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
+    if (m_entries.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
         throw IOError { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
 
-    if (m_mutation_folder_path.empty() && m_memory.size() == 1)
+    if (m_mutation_folder_path.empty() && m_entries.size() == 1)
         throw std::runtime_error { "Couldn't run any mutants because there aren't any." };
 
-    if (m_memory.empty())
+    if (m_entries.empty())
     {
         // Insert the original model first.
         const std::ifstream ifstream { m_model_path };
@@ -557,7 +557,7 @@ void MutationModel::run_mutants(const std::filesystem::path& compiler_path, std:
         if (ifstream.bad())
             throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
 
-        m_memory.emplace_back(m_filename_stem, std::move(buffer).str());
+        m_entries.emplace_back(m_filename_stem, std::move(buffer).str());
 
         std::error_code last_write_ec {};
         const auto last_write_time_original = check_model_last_modified_time ? std::filesystem::last_write_time(m_model_path, last_write_ec) : std::filesystem::file_time_type::min();
@@ -608,7 +608,7 @@ void MutationModel::run_mutants(const std::filesystem::path& compiler_path, std:
             if (str.empty())
                 throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), entry.path().native(), code(logging::Style::Reset)) };
 
-            m_memory.emplace_back(*std::move(stem), std::move(str));
+            m_entries.emplace_back(*std::move(stem), std::move(str));
         }
     }
 
@@ -616,7 +616,7 @@ void MutationModel::run_mutants(const std::filesystem::path& compiler_path, std:
         .path = compiler_path,
         .compiler_arguments = compiler_arguments,
         .data_files = data_files,
-        .models = m_memory,
+        .models = m_entries,
         .timeout = timeout,
         .n_jobs = n_jobs,
         .mutants = mutants,

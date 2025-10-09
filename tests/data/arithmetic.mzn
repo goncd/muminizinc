@@ -1,3 +1,3 @@
 int: value;
 
-constraint 100 + a < 150;
+constraint 100 + value < 150;

@@ -1,14 +1,14 @@
 find_package(Boost 1.88 REQUIRED COMPONENTS unit_test_framework)
 
 set(TEST_SOURCES
+    test_arguments.cpp
+    test_execution.cpp
     test_mutant_arithmetic.cpp
+    test_mutant_call_argument_swap.cpp
+    test_mutant_call_swap.cpp
+    test_mutation_model.cpp
     test_mutant_relational.cpp
     test_mutant_unary.cpp
-    test_mutant_call_swap.cpp
-    test_mutant_call_argument_swap.cpp
-    test_arguments.cpp
-    test_mutation_model.cpp
-    test_execution.cpp
 )
 
 foreach(test_file ${TEST_SOURCES})
@@ -24,6 +24,7 @@ foreach(test_file ${TEST_SOURCES})
     )
 
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_DYN_LINK)
+    target_compile_definitions(${test_name} PRIVATE BOOST_PROCESS_USE_STD_FS=1)
 
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()

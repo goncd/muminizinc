@@ -56,7 +56,7 @@ output  [((((("\""++str)++"\" has ")++format(string_length(str)))++
     BOOST_REQUIRE_NO_THROW(BOOST_REQUIRE(mutation_model.find_mutants()));
 
     // Ignore the original mutant.
-    const auto entries = mutation_model.get_memory().subspan(1);
+    const auto entries = mutation_model.get_entries().subspan(1);
 
     BOOST_REQUIRE(entries.size() == expected_mutants.size());
 
