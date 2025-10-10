@@ -55,6 +55,8 @@ struct Command
     const command_pointer operation;
     std::span<const Option> options;
 
+    bool is_hidden { false };
+
     [[nodiscard]] constexpr bool is_option() const noexcept { return option.name.starts_with("--"); };
 };
 
@@ -201,6 +203,16 @@ constexpr Command command_analyse {
     .options = analyse_parameters
 };
 
+constexpr Command command_hidden_analyze {
+    .option = {
+        .name = "analyze",
+        .short_name = command_analyse.option.short_name,
+        .help = command_analyse.option.help },
+    .operation = command_analyse.operation,
+    .options = analyse_parameters,
+    .is_hidden = true
+};
+
 constexpr Command command_run {
     .option {
         .name = "run",
@@ -217,6 +229,16 @@ constexpr Command command_clean {
         .help = "Cleans the working directory for a model" },
     .operation = clean,
     .options = clean_parameters
+};
+
+constexpr Command command_hidden_clear {
+    .option = {
+        .name = "clear",
+        .short_name = command_clean.option.short_name,
+        .help = command_clean.option.help },
+    .operation = command_clean.operation,
+    .options = clean_parameters,
+    .is_hidden = true
 };
 
 constexpr Command command_help {
@@ -251,8 +273,10 @@ constexpr Command command_color_option {
 
 constexpr std::array commands {
     command_analyse,
+    command_hidden_analyze,
     command_run,
     command_clean,
+    command_hidden_clear,
     command_help,
     command_help_option,
     command_version,
@@ -281,12 +305,12 @@ int print_help()
 {
     static constexpr auto largest_command = std::ranges::max_element(commands,
         {}, [](const Command& command)
-        { return command.is_option() ? std::size_t {} : command.option.name.length(); })
+        { return command.is_option() || command.is_hidden ? std::string_view::size_type {} : command.option.name.length(); })
                                                 ->option.name.length();
 
     static constexpr auto largest_option = std::ranges::max_element(commands,
         {}, [](const Command& command)
-        { return !command.is_option() ? std::size_t {} : command.option.name.length(); })
+        { return !command.is_option() ? std::string_view::size_type {} : command.option.name.length(); })
                                                ->option.name.length();
 
     std::println("{:s} is a mutation test tool for MiniZinc models.", config::project_fancy_name);
@@ -294,12 +318,12 @@ int print_help()
     std::println("\n{0:}{1:}Usage{2:}: ./{3:s} [COMMAND]\n\n{0:}{1:}Commands{2:}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), config::executable_name);
 
     for (const auto& command : commands | std::views::filter([](const auto& command)
-                                   { return !command.is_option(); }))
+                                   { return !command.is_option() && !command.is_hidden; }))
         std::println("  {:<{}}  {}", command.option.name, largest_command, command.option.help);
 
     std::println("\n{}{}Options{}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
     for (const auto& option : commands | std::views::filter([](const auto& option)
-                                  { return option.is_option(); }))
+                                  { return option.is_option() && !option.is_hidden; }))
         std::println("  {}, {:<{}}  {}", option.option.short_name, option.option.name, largest_option, option.option.help);
 
     return EXIT_SUCCESS;
@@ -315,10 +339,10 @@ int help_subcommand(const Command& command)
         {}, [](const Option& option)
         { return option.name.length(); });
 
-    const auto lagest_option_length = largest_option->name.length();
-
     if (largest_option != command.options.end())
     {
+        const auto lagest_option_length = largest_option->name.length();
+
         std::println("\n{:s}{:s}Options{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
         for (const auto& option : command.options)
         {
@@ -334,17 +358,18 @@ int help_subcommand(const Command& command)
 
 int help_subcommand(std::span<const std::string_view> arguments)
 {
-    if (arguments.empty() || (arguments.size() == 2 && arguments[1] == option_help))
+    // No arguments, or asking for help for ourselves.
+    if (arguments.empty() || (arguments.size() == 1 && arguments.front() == command_help.option.name) || (arguments.front() == command_help.option.name && (arguments[1] == option_help || arguments[1] == arguments.front())))
         return print_help();
 
-    if (arguments.size() > 1)
-        throw BadArgument { std::format("{:s}: Too many arguments.", command_help.option.name) };
+    if (arguments.size() > 2)
+        throw BadArgument { std::format("{:s}: Too many arguments.", arguments.front()) };
 
-    const auto* const command = std::ranges::find_if(commands, [subcommand = arguments.front()](const auto& command)
+    const auto* const command = std::ranges::find_if(commands, [subcommand = arguments.back()](const auto& command)
         { return command.option.name == subcommand; });
 
     if (command == commands.end())
-        throw BadArgument { std::format("{:s}: Unknown command `{:s}`.", command_help.option.name, arguments.front()) };
+        throw BadArgument { std::format("{:s}: Unknown command `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), arguments.back(), logging::code(logging::Style::Reset)) };
 
     return help_subcommand(*command);
 }
@@ -357,12 +382,12 @@ int analyse(std::span<const std::string_view> arguments)
     bool in_memory = false;
     std::vector<ascii_ci_string_view> operators;
 
-    for (std::size_t i {}; i < arguments.size(); ++i)
+    for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
         if (arguments[i] == option_include)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_analyse.option.name, option_include.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_include.name) };
 
             include_path = arguments[i + 1];
 
@@ -371,7 +396,7 @@ int analyse(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_operator)
         {
             if (i + 1 >= arguments.size())
-                throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", command_analyse.option.name, option_operator.name));
+                throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_operator.name));
 
             for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
                 operators.emplace_back(op);
@@ -381,31 +406,31 @@ int analyse(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_directory)
         {
             if (in_memory)
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_analyse.option.name, option_directory.name, option_in_memory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_directory.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
 
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_analyse.option.name, option_directory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_directory.name) };
 
             output_directory = arguments[i + 1];
             ++i;
         }
         else if (arguments[i] == option_help)
-            return help_subcommand(command_analyse);
+            return help_subcommand(arguments.subspan(0, 1));
         else if (arguments[i] == option_in_memory)
         {
             if (!output_directory.empty())
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_analyse.option.name, option_in_memory.name, option_directory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_in_memory.name, logging::code(logging::Color::Blue), option_directory.name, logging::code(logging::Style::Reset)) };
 
             in_memory = true;
         }
         else if (!model_path.empty())
-            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}`.", command_analyse.option.name, arguments[i]) };
+            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
         else
             model_path = arguments[i];
     }
 
     if (model_path.empty())
-        throw BadArgument { std::format("{:s}: Missing model path.", command_analyse.option.name) };
+        throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
 
     try
     {
@@ -415,7 +440,7 @@ int analyse(std::span<const std::string_view> arguments)
     }
     catch (const MutationModel::UnknownOperator& unknown_operator)
     {
-        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", command_analyse.option.name, unknown_operator.what()));
+        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
     }
 
     return EXIT_SUCCESS;
@@ -440,12 +465,12 @@ int run(std::span<const std::string_view> arguments)
     std::uint64_t timeout_seconds { DEFAULT_TIMEOUT_S };
 #undef DEFAULT_TIMEOUT_S
 
-    for (std::size_t i {}; i < arguments.size(); ++i)
+    for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
         if (arguments[i] == option_ignore_model_timestamp)
         {
             if (in_memory)
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_ignore_model_timestamp.name, option_in_memory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_ignore_model_timestamp.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
 
             check_model_last_modified_time = false;
         }
@@ -454,7 +479,7 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_mutant)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_mutant.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_mutant.name) };
 
             for (const auto mutant : std::views::split(arguments[i + 1], separator_arguments))
                 mutants.emplace_back(mutant);
@@ -464,7 +489,7 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_include)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_include.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_include.name) };
 
             include_path = arguments[i + 1];
 
@@ -473,7 +498,7 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_output)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_output.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_output.name) };
 
             // This is safe because we know this comes from the argv array, whose strings are always null-terminated.
             output = arguments[i + 1].data();
@@ -483,23 +508,23 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_jobs)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_jobs.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_jobs.name) };
 
             const auto parameter { arguments[i + 1] };
             const auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), n_jobs);
 
             if (ec == std::errc::invalid_argument)
-                throw BadArgument { std::format("{:s}: {:s}: Invalid number.", command_run.option.name, option_jobs.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Invalid number.", arguments.front(), option_jobs.name) };
 
             if (ec == std::errc::result_out_of_range)
-                throw BadArgument { std::format("{:s}: {:s}: The specified number is too big.", command_run.option.name, option_jobs.name) };
+                throw BadArgument { std::format("{:s}: {:s}: The specified number is too big.", arguments.front(), option_jobs.name) };
 
             ++i;
         }
         else if (arguments[i] == option_data)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_data.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_data.name) };
 
             for (const auto given_path : std::views::split(arguments[i + 1], separator_arguments))
             {
@@ -514,7 +539,7 @@ int run(std::span<const std::string_view> arguments)
                 for (const auto& element : std::filesystem::directory_iterator(path))
                 {
                     if (!element.is_regular_file() && !element.is_symlink())
-                        throw BadArgument { std::format("{:s}: {:s}: Found an invalid file or a folder inside the folder \"{:s}\".", command_run.option.name, option_data.name, given_path) };
+                        throw BadArgument { std::format("{:s}: {:s}: Found an invalid file or a folder inside the folder \"{:s}{:s}{:s}\".", arguments.front(), option_data.name, logging::code(logging::Color::Blue), given_path, logging::code(logging::Style::Reset)) };
 
                     data_files.emplace_back(element.path().string());
                 }
@@ -525,23 +550,23 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_timeout)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_timeout.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_timeout.name) };
 
             const auto parameter { arguments[i + 1] };
             const auto [_, ec] = std::from_chars(parameter.data(), parameter.data() + parameter.size(), timeout_seconds);
 
             if (ec == std::errc::invalid_argument)
-                throw BadArgument { std::format("{:s}: {:s}: Invalid number.", command_run.option.name, option_timeout.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Invalid number.", arguments.front(), option_timeout.name) };
 
             if (ec == std::errc::result_out_of_range)
-                throw BadArgument { std::format("{:s}: {:s}: The specified number is too big.", command_run.option.name, option_timeout.name) };
+                throw BadArgument { std::format("{:s}: {:s}: The specified number is too big.", arguments.front(), option_timeout.name) };
 
             ++i;
         }
         else if (arguments[i] == option_operator)
         {
             if (i + 1 >= arguments.size())
-                throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_operator.name));
+                throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_operator.name));
 
             for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
                 operators.emplace_back(op);
@@ -551,10 +576,10 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_directory)
         {
             if (in_memory)
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_directory.name, option_in_memory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_directory.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
 
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_directory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_directory.name) };
 
             output_directory = arguments[i + 1];
             ++i;
@@ -564,7 +589,7 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_compiler_path)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_run.option.name, option_compiler_path.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_compiler_path.name) };
 
             compiler_path = arguments[i + 1];
             ++i;
@@ -572,10 +597,10 @@ int run(std::span<const std::string_view> arguments)
         else if (arguments[i] == option_in_memory)
         {
             if (!output_directory.empty())
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_in_memory.name, option_directory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_in_memory.name, logging::code(logging::Color::Blue), option_directory.name, logging::code(logging::Style::Reset)) };
 
             if (!check_model_last_modified_time)
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with {:s}.", command_run.option.name, option_in_memory.name, option_ignore_model_timestamp.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_in_memory.name, logging::code(logging::Color::Blue), option_ignore_model_timestamp.name, logging::code(logging::Style::Reset)) };
 
             in_memory = true;
         }
@@ -586,20 +611,20 @@ int run(std::span<const std::string_view> arguments)
             break;
         }
         else if (!model_path.empty())
-            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}`.\n\nIf you want to pass arguments to the compiler, put `--` before them.", command_run.option.name, arguments[i]) };
+            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}{:s}{:s}`.\n\nIf you want to pass arguments to the compiler, put `--` before them.", arguments.front(), logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
         else
             model_path = arguments[i];
     }
 
     if (model_path.empty())
-        throw BadArgument { std::format("{:s}: Missing model path.", command_run.option.name) };
+        throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
 
     const std::filesystem::path executable_from_user { compiler_path };
 
     const auto executable = std::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
 
     if (executable.empty())
-        throw BadArgument { std::format("{:s}: Could not find the executable `{:s}`. Please add it to $PATH or provide its path using `{:s}.`", command_run.option.name, executable_from_user.native(), option_compiler_path.name) };
+        throw BadArgument { std::format("{:s}: Could not find the executable `{:s}{:s}{:s}`. Please add it to $PATH or provide its path using `{:s}{:s}{:s}.`", arguments.front(), logging::code(logging::Color::Blue), executable_from_user.native(), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), option_compiler_path.name, logging::code(logging::Style::Reset)) };
 
     std::optional<std::ofstream> output_file;
 
@@ -608,7 +633,7 @@ int run(std::span<const std::string_view> arguments)
         output_file = std::ofstream { output };
 
         if (!output_file->good())
-            throw BadArgument { std::format("{:s}: Could not open the output file `{:s}`.", command_run.option.name, output) };
+            throw BadArgument { std::format("{:s}: Could not open the output file `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), output, logging::code(logging::Style::Reset)) };
     }
 
     MutationModel model;
@@ -619,7 +644,7 @@ int run(std::span<const std::string_view> arguments)
     }
     catch (const MutationModel::UnknownOperator& unknown_operator)
     {
-        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", command_run.option.name, unknown_operator.what()));
+        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
     }
 
     bool should_run = true;
@@ -698,26 +723,26 @@ int clean(std::span<const std::string_view> arguments)
     std::string_view model_path {};
     std::string_view output_directory {};
 
-    for (std::size_t i {}; i < arguments.size(); ++i)
+    for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
         if (arguments[i] == option_directory)
         {
             if (i + 1 >= arguments.size())
-                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", command_clean.option.name, option_directory.name) };
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_directory.name) };
 
             output_directory = arguments[i + 1];
             ++i;
         }
         else if (arguments[i] == option_help)
-            return help_subcommand(command_clean);
+            return help_subcommand(arguments.subspan(0, 1));
         else if (!model_path.empty())
-            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}`.", command_clean.option.name, arguments[i]) };
+            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
         else
             model_path = arguments[i];
     }
 
     if (model_path.empty())
-        throw BadArgument { std::format("{:s}: Missing model path.", command_clean.option.name) };
+        throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
 
     MutationModel model { model_path, output_directory, {}, std::cout };
 
@@ -735,7 +760,6 @@ int print_version()
 
     return EXIT_SUCCESS;
 }
-
 }
 
 int parse_arguments(std::span<const char* const> argv)
@@ -773,7 +797,7 @@ int parse_arguments(std::span<const char* const> argv)
             else if (value == value_false)
                 should_have_color = false;
             else
-                throw BadArgument { std::format(R"({:s}: Unknown value `{:s}`. Valid values are "{:s}" and "{:s}".)", option_color.name, value, value_true, value_false) };
+                throw BadArgument { std::format(R"({:s}: Unknown value `{:s}{:s}{:s}`. Valid values are "{:s}" and "{:s}".)", option_color.name, logging::code(logging::Color::Blue), value, logging::code(logging::Style::Reset), value_true, value_false) };
 
             logging::have_color_stdout = logging::have_color_stderr = should_have_color;
 
@@ -798,11 +822,11 @@ int parse_arguments(std::span<const char* const> argv)
         for (const auto& command : commands)
             if (arguments[i] == command.option)
                 // The command's options will be handled by itself.
-                return command.operation(arguments_span.subspan(i + 1));
+                return command.operation(arguments_span.subspan(i));
 
         // If we have reached this point, we have found an argument that does not match
         // our commands or our global arguments.
-        throw BadArgument { std::format("Unknown command or option `{:s}`.", arguments[i]) };
+        throw BadArgument { std::format("Unknown command or option `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
     }
 
     // If we have reached this point, we have found no commands to execute.
