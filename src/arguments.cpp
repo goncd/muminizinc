@@ -67,6 +67,7 @@ struct Command
 
 int analyse(std::span<const std::string_view> arguments);
 int run(std::span<const std::string_view> arguments);
+int normalise(std::span<const std::string_view> arguments);
 int clean(std::span<const std::string_view> arguments);
 int help_subcommand(std::span<const std::string_view> arguments);
 
@@ -188,6 +189,12 @@ constexpr std::array run_parameters {
     option_ignore_model_timestamp,
 };
 
+constexpr std::array normalise_parameters {
+    option_include,
+    option_help,
+    option_color
+};
+
 constexpr std::array clean_parameters {
     option_directory,
     option_help,
@@ -220,6 +227,25 @@ constexpr Command command_run {
         .help = "Runs all the mutants" },
     .operation = run,
     .options = run_parameters
+};
+
+constexpr Command command_normalise {
+    .option {
+        .name = "normalise",
+        .short_name = {},
+        .help = "Prints a normalised version of the given model" },
+    .operation = normalise,
+    .options = normalise_parameters
+};
+
+constexpr Command command_hidden_normalize {
+    .option {
+        .name = "normalize",
+        .short_name = command_normalise.option.short_name,
+        .help = command_normalise.option.help },
+    .operation = normalise,
+    .options = normalise_parameters,
+    .is_hidden = true
 };
 
 constexpr Command command_clean {
@@ -275,6 +301,8 @@ constexpr std::array commands {
     command_analyse,
     command_hidden_analyze,
     command_run,
+    command_normalise,
+    command_hidden_normalize,
     command_clean,
     command_hidden_clear,
     command_help,
@@ -714,6 +742,46 @@ int run(std::span<const std::string_view> arguments)
         std::println();
 
     std::println("{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
+
+    return EXIT_SUCCESS;
+}
+
+int normalise(std::span<const std::string_view> arguments)
+{
+    std::string_view model_path;
+    std::string_view include_path;
+
+    for (std::size_t i { 1 }; i < arguments.size(); ++i)
+    {
+        if (arguments[i] == option_include)
+        {
+            if (i + 1 >= arguments.size())
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_include.name) };
+
+            include_path = arguments[i + 1];
+
+            ++i;
+        }
+        else if (arguments[i] == option_help)
+            return help_subcommand(arguments.subspan(0, 1));
+
+        if (!model_path.empty())
+            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
+
+        model_path = arguments[i];
+    }
+
+    if (model_path.empty())
+        throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
+
+    MutationModel mutation_model { model_path };
+
+    mutation_model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(), MutationModel::RunType::NoDetection);
+
+    const auto entries = mutation_model.get_entries();
+
+    if (!entries.empty())
+        std::print("{:s}", entries.front().contents);
 
     return EXIT_SUCCESS;
 }

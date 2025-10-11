@@ -340,8 +340,13 @@ MutationModel::MutationModel(const std::filesystem::path& path, std::span<const 
             throw UnknownOperator { std::format("Unknown operator `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
     }
 
-    if (!std::filesystem::is_regular_file(m_model_path))
-        throw IOError { "Could not open the requested file." };
+    const auto status = std::filesystem::status(m_model_path);
+
+    if (!std::filesystem::exists(status))
+        throw IOError { "The provided path does not exist." };
+
+    if (std::filesystem::is_directory(status))
+        throw IOError { "The provided path is a directory." };
 
     if (!m_model_path.has_stem())
         throw IOError { "Could not determine the filename without extension of the model." };
@@ -389,8 +394,11 @@ void MutationModel::clear_memory() noexcept
     m_entries.clear();
 }
 
-bool MutationModel::find_mutants(std::string&& include_path)
+bool MutationModel::find_mutants(std::string&& include_path, RunType run_type)
 {
+    if (!m_entries.empty())
+        clear_memory();
+
     MiniZinc::Env env;
 
     const std::ifstream ifstream { m_model_path };
@@ -459,6 +467,14 @@ bool MutationModel::find_mutants(std::string&& include_path)
             m_detected_enums.emplace_back(std::format("set of int: {:s}", view),
                 std::format("{:s}{:s}", enum_keyword, view));
         }
+    }
+
+    // If we don't have to detect any mutants, just save the original model
+    // and stop here.
+    if (run_type == RunType::NoDetection)
+    {
+        save_current_model({}, 0, 0);
+        return true;
     }
 
     for (const auto* const item : *m_model)

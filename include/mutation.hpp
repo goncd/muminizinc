@@ -54,7 +54,15 @@ public:
     // Constructs a MutationModel that works with a filesystem.
     explicit MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators = {}, std::optional<std::reference_wrapper<std::ostream>> output_stream = std::nullopt);
 
-    bool find_mutants(std::string&& include_path = {});
+    enum class RunType : std::uint8_t
+    {
+        // Just parse and get the normalised model.
+        NoDetection,
+        // Detect and save all mutants.
+        FullRun
+    };
+
+    bool find_mutants(std::string&& include_path = {}, RunType run_type = MutationModel::RunType::FullRun);
 
     void clear_output_folder();
 
