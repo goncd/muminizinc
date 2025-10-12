@@ -65,6 +65,7 @@ struct Command
     return option.name == rhs || option.short_name == rhs;
 }
 
+int applyall(std::span<const std::string_view> arguments);
 int analyse(std::span<const std::string_view> arguments);
 int run(std::span<const std::string_view> arguments);
 int normalise(std::span<const std::string_view> arguments);
@@ -164,9 +165,15 @@ constexpr Option option_ignore_model_timestamp {
 };
 
 constexpr std::array analyse_parameters {
+    option_help,
+    option_color,
+    option_operator,
+    option_include
+};
+
+constexpr std::array applyall_parameters {
     option_directory,
     option_help,
-    option_in_memory,
     option_color,
     option_operator,
     option_include
@@ -199,6 +206,15 @@ constexpr std::array clean_parameters {
     option_directory,
     option_help,
     option_color
+};
+
+constexpr Command command_applyall {
+    .option {
+        .name = "applyall",
+        .short_name = {},
+        .help = "Analyses and then apply all the found mutants to the given MiniZinc model" },
+    .operation = applyall,
+    .options = applyall_parameters
 };
 
 constexpr Command command_analyse {
@@ -298,6 +314,7 @@ constexpr Command command_color_option {
 };
 
 constexpr std::array commands {
+    command_applyall,
     command_analyse,
     command_hidden_analyze,
     command_run,
@@ -402,12 +419,11 @@ int help_subcommand(std::span<const std::string_view> arguments)
     return help_subcommand(*command);
 }
 
-int analyse(std::span<const std::string_view> arguments)
+int applyall(std::span<const std::string_view> arguments)
 {
     std::string_view model_path;
     std::string_view output_directory;
     std::string_view include_path;
-    bool in_memory = false;
     std::vector<ascii_ci_string_view> operators;
 
     for (std::size_t i { 1 }; i < arguments.size(); ++i)
@@ -433,9 +449,6 @@ int analyse(std::span<const std::string_view> arguments)
         }
         else if (arguments[i] == option_directory)
         {
-            if (in_memory)
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_directory.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
-
             if (i + 1 >= arguments.size())
                 throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_directory.name) };
 
@@ -444,13 +457,6 @@ int analyse(std::span<const std::string_view> arguments)
         }
         else if (arguments[i] == option_help)
             return help_subcommand(arguments.subspan(0, 1));
-        else if (arguments[i] == option_in_memory)
-        {
-            if (!output_directory.empty())
-                throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_in_memory.name, logging::code(logging::Color::Blue), option_directory.name, logging::code(logging::Style::Reset)) };
-
-            in_memory = true;
-        }
         else if (!model_path.empty())
             throw BadArgument { std::format("{:s}: Unknown parameter `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
         else
@@ -462,7 +468,59 @@ int analyse(std::span<const std::string_view> arguments)
 
     try
     {
-        auto model = in_memory ? MutationModel { model_path, operators, std::cout } : MutationModel { model_path, output_directory, operators, std::cout };
+        MutationModel model { model_path, output_directory, operators, std::cout };
+
+        model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
+    }
+    catch (const MutationModel::UnknownOperator& unknown_operator)
+    {
+        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
+    }
+
+    return EXIT_SUCCESS;
+}
+
+int analyse(std::span<const std::string_view> arguments)
+{
+    std::string_view model_path;
+    std::string_view include_path;
+    std::vector<ascii_ci_string_view> operators;
+
+    for (std::size_t i { 1 }; i < arguments.size(); ++i)
+    {
+        if (arguments[i] == option_include)
+        {
+            if (i + 1 >= arguments.size())
+                throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_include.name) };
+
+            include_path = arguments[i + 1];
+
+            ++i;
+        }
+        else if (arguments[i] == option_operator)
+        {
+            if (i + 1 >= arguments.size())
+                throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_operator.name));
+
+            for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
+                operators.emplace_back(op);
+
+            ++i;
+        }
+        else if (arguments[i] == option_help)
+            return help_subcommand(arguments.subspan(0, 1));
+        else if (!model_path.empty())
+            throw BadArgument { std::format("{:s}: Unknown parameter `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
+        else
+            model_path = arguments[i];
+    }
+
+    if (model_path.empty())
+        throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
+
+    try
+    {
+        MutationModel model { model_path, operators, std::cout };
 
         model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
     }
@@ -764,11 +822,10 @@ int normalise(std::span<const std::string_view> arguments)
         }
         else if (arguments[i] == option_help)
             return help_subcommand(arguments.subspan(0, 1));
-
-        if (!model_path.empty())
+        else if (!model_path.empty())
             throw BadArgument { std::format("{:s}: Unknown parameter `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), arguments[i], logging::code(logging::Style::Reset)) };
-
-        model_path = arguments[i];
+        else
+            model_path = arguments[i];
     }
 
     if (model_path.empty())
