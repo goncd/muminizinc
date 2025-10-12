@@ -51,7 +51,9 @@ output  [((((("\""++str)++"\" has ")++format(string_length(str)))++
 )"sv
     };
 
-    MutationModel mutation_model { "data/call_argument_swap.mzn", std::array { ascii_ci_string_view { "SWP" } } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "SWP" } };
+
+    MutationModel mutation_model { "data/call_argument_swap.mzn", allowed_operators };
 
     BOOST_REQUIRE_NO_THROW(BOOST_REQUIRE(mutation_model.find_mutants()));
 

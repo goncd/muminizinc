@@ -49,6 +49,7 @@ target_compile_options(common_options INTERFACE
         -fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=
         $<$<CONFIG:DEBUG>:
             -Og
+            --coverage
             -ggdb3
             -fsanitize=address,leak,undefined>
         $<$<CONFIG:RELEASE>:
@@ -62,7 +63,7 @@ target_compile_options(common_options INTERFACE
 target_link_options(common_options INTERFACE
     $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>,$<CXX_COMPILER_ID:GNU>>:
         $<$<CONFIG:DEBUG>:
-            -fsanitize=address,leak,undefined>>)
+            -fsanitize=address,leak,undefined --coverage>>)
 
 target_link_libraries(${PROJECT_NAME_LIB} PRIVATE common_options)
 target_link_libraries(${PROJECT_NAME} PRIVATE common_options)

@@ -35,7 +35,9 @@ constraint 100^value < 150;
 )"sv
     };
 
-    MutationModel mutation_model { "data/arithmetic.mzn", std::array { ascii_ci_string_view { "ART" } } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "ART" } };
+
+    MutationModel mutation_model { "data/arithmetic.mzn", allowed_operators };
 
     BOOST_REQUIRE_NO_THROW(BOOST_REQUIRE(mutation_model.find_mutants()));
 

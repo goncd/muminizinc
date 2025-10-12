@@ -21,6 +21,7 @@ foreach(test_file ${TEST_SOURCES})
             ${PROJECT_NAME_LIB}
             Boost::process
             mzn
+            common_options
     )
 
     target_compile_definitions(${test_name} PRIVATE BOOST_TEST_DYN_LINK)
@@ -36,3 +37,16 @@ set(TEST_DATA_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
 # making sure old files are deleted first.
 file(REMOVE_RECURSE ${TEST_DATA_DESTINATION})
 file(COPY ${TEST_DATA_SOURCE} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+
+# Coverage testing
+find_program(GCOVR gcovr)
+
+if(GCOVR)
+    add_custom_target(coverage
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage
+        COMMAND ${CMAKE_CTEST_COMMAND}
+        COMMAND ${GCOVR} -r ${CMAKE_SOURCE_DIR} --html-details -o coverage/coverage.html
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Running tests and generating HTML coverage report"
+    )
+endif(GCOVR)

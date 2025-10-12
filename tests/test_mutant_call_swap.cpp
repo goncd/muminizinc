@@ -26,7 +26,9 @@ constraint forall ( x in arr2 ) ( x > 3 );
 )"sv
     };
 
-    MutationModel mutation_model { "data/call_swap.mzn", std::array { ascii_ci_string_view { "CALL" } } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "CALL" } };
+
+    MutationModel mutation_model { "data/call_swap.mzn", allowed_operators };
 
     BOOST_REQUIRE_NO_THROW(BOOST_REQUIRE(mutation_model.find_mutants()));
 

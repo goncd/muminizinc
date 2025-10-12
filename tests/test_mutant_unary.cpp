@@ -24,7 +24,9 @@ output  ["negative value is "++format(value)++"\n"];
 )"sv
     };
 
-    MutationModel mutation_model { "data/unary.mzn", std::array { ascii_ci_string_view { "UNA" } } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "UNA" } };
+
+    MutationModel mutation_model { "data/unary.mzn", allowed_operators };
 
     BOOST_REQUIRE_NO_THROW(BOOST_REQUIRE(mutation_model.find_mutants()));
 

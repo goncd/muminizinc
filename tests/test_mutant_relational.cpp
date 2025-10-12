@@ -32,7 +32,9 @@ constraint value!=5;
 )"sv,
     };
 
-    MutationModel mutation_model { "data/relational.mzn", std::array { ascii_ci_string_view { "REL" } } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "REL" } };
+
+    MutationModel mutation_model { "data/relational.mzn", allowed_operators };
 
     BOOST_REQUIRE_NO_THROW(BOOST_REQUIRE(mutation_model.find_mutants()));
 
