@@ -132,7 +132,7 @@ private:
     std::uint64_t m_mutation_BinOp_count {};
 
     void perform_mutation_unop(MiniZinc::BinOp* op, std::string_view operator_name);
-    void perform_mutation_unop(MiniZinc::Call* op, std::string_view operator_name);
+    void perform_mutation_unop(MiniZinc::Call* call, std::string_view operator_name);
     std::uint64_t m_mutation_UnOp_count {};
 
     void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls, std::string_view operator_name);
