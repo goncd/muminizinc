@@ -26,6 +26,7 @@ add_library(${PROJECT_NAME_LIB}
     ${PROJECT_SOURCE_DIR}/src/arguments.cpp
     ${PROJECT_SOURCE_DIR}/src/mutation.cpp
     ${PROJECT_SOURCE_DIR}/src/executor.cpp
+    ${PROJECT_SOURCE_DIR}/src/operators/mutator.cpp
 )
 
 target_include_directories(${PROJECT_NAME_LIB} PUBLIC "${PROJECT_SOURCE_DIR}/include")

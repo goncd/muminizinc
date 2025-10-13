@@ -34,19 +34,23 @@ constraint value!=5;
 
     constexpr std::array allowed_operators { ascii_ci_string_view { "REL" } };
 
-    MutationModel mutation_model { "data/relational.mzn", allowed_operators };
+    const std::filesystem::path model_path { "data/relational.mzn" };
 
-    BOOST_REQUIRE_NO_THROW(BOOST_REQUIRE(mutation_model.find_mutants()));
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = allowed_operators,
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
 
-    // Ignore the original mutant.
-    const auto entries = mutation_model.get_entries().subspan(1);
+    const auto entries = MuMiniZinc::find_mutants(find_parameters);
 
-    BOOST_REQUIRE(entries.size() == expected_mutants.size());
+    const auto mutants = entries.mutants();
+    BOOST_REQUIRE(mutants.size() == expected_mutants.size());
 
     for (auto [index, mutant] : expected_mutants | std::views::enumerate)
-    {
-        BOOST_CHECK_MESSAGE(std::ranges::any_of(entries, [mutant](const auto& entry)
+        BOOST_CHECK_MESSAGE(std::ranges::any_of(mutants, [mutant](const auto& entry)
                                 { return entry.contents == mutant; }),
             std::format("Expected mutant #{:d} cannot be found among the result.", index));
-    }
 }

@@ -1,3 +1,6 @@
+#include "case_insensitive_string.hpp"
+#include "executor.hpp"
+#include <boost/process/v2/environment.hpp>
 #define BOOST_TEST_MODULE test_mutation_model
 #include <boost/test/unit_test.hpp> // BOOST_AUTO_TEST_CASE
 
@@ -7,15 +10,21 @@
 #include <format>     // std::format
 #include <fstream>    // std::ofstream
 
-#include <mutation.hpp> // MutationModel
+#include <mutation.hpp>
 
 BOOST_AUTO_TEST_CASE(empty_model)
 {
-    MutationModel mutation_model { "data/empty.mzn" };
+    const std::filesystem::path model_path { "data/empty.mzn" };
 
-    BOOST_REQUIRE_THROW(mutation_model.find_mutants(), MutationModel::EmptyFile);
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = {},
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
 
-    BOOST_REQUIRE(!std::filesystem::exists("data/empty-mutants/"));
+    BOOST_REQUIRE_THROW(const auto entries = MuMiniZinc::find_mutants(find_parameters), MuMiniZinc::EmptyFile);
 }
 
 BOOST_AUTO_TEST_CASE(empty_mutant)
@@ -29,9 +38,17 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
 
     BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 
-    MutationModel mutation_model { model_path, mutant_folder_path };
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = {},
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
 
-    BOOST_REQUIRE_NO_THROW(mutation_model.find_mutants());
+    const auto entries = MuMiniZinc::find_mutants(find_parameters);
+
+    MuMiniZinc::dump_mutants(entries, mutant_folder_path);
 
     BOOST_REQUIRE(std::filesystem::exists(mutant_folder_path));
 
@@ -46,10 +63,17 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
         break;
     }
 
-    // Here we only care about throwing the EmptyMutant exception, so just pass default values for the compiler path, arguments, etc.
-    BOOST_CHECK_THROW(mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::EmptyFile);
+    const MuMiniZinc::retrieve_mutants_args retrieve_parameters {
+        .model_path = model_path,
+        .directory_path = mutant_folder_path,
+        .allowed_operators = {},
+        .allowed_mutants = {},
+        .check_model_last_modified_time = true
+    };
 
-    mutation_model.clear_output_folder();
+    BOOST_CHECK_THROW(const auto new_entries = MuMiniZinc::retrieve_mutants(retrieve_parameters), MuMiniZinc::EmptyFile);
+
+    MuMiniZinc::clear_mutant_output_folder(model_path, mutant_folder_path);
 
     BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 }
@@ -64,9 +88,17 @@ BOOST_AUTO_TEST_CASE(invalid_file)
 
     BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 
-    MutationModel mutation_model { model_path, mutant_folder_path };
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = {},
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
 
-    BOOST_REQUIRE_NO_THROW(mutation_model.find_mutants());
+    const auto entries = MuMiniZinc::find_mutants(find_parameters);
+
+    MuMiniZinc::dump_mutants(entries, mutant_folder_path);
 
     BOOST_REQUIRE(std::filesystem::exists(mutant_folder_path));
 
@@ -74,19 +106,36 @@ BOOST_AUTO_TEST_CASE(invalid_file)
     std::ofstream file { mutant_folder_path / "fake_file" };
     file << "% This is a fake file";
 
-    // Here we only care about throwing the EmptyMutant exception, so just pass default values for the compiler path, arguments, etc.
-    BOOST_CHECK_THROW(mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::InvalidFile);
+    const MuMiniZinc::retrieve_mutants_args retrieve_parameters {
+        .model_path = model_path,
+        .directory_path = mutant_folder_path,
+        .allowed_operators = {},
+        .allowed_mutants = {},
+        .check_model_last_modified_time = true
+    };
 
-    BOOST_CHECK_THROW(mutation_model.clear_output_folder(), MutationModel::InvalidFile);
+    BOOST_CHECK_THROW(const auto new_entries = MuMiniZinc::retrieve_mutants(retrieve_parameters), MuMiniZinc::InvalidFile);
 
     BOOST_REQUIRE(std::filesystem::remove_all(mutant_folder_path));
+
+    BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 }
 
 BOOST_AUTO_TEST_CASE(no_mutants_detected)
 {
-    MutationModel mutation_model { "data/no_mutants.mzn" };
+    const std::filesystem::path model_path { "data/no_mutants.mzn" };
 
-    BOOST_REQUIRE(!mutation_model.find_mutants());
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = {},
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
+
+    const auto entries = MuMiniZinc::find_mutants(find_parameters);
+
+    BOOST_REQUIRE(entries.mutants().empty());
 }
 
 BOOST_AUTO_TEST_CASE(outdated_mutant)
@@ -100,9 +149,17 @@ BOOST_AUTO_TEST_CASE(outdated_mutant)
 
     BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 
-    MutationModel mutation_model { model_path, mutant_folder_path };
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = {},
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
 
-    BOOST_REQUIRE_NO_THROW(mutation_model.find_mutants());
+    const auto entries = MuMiniZinc::find_mutants(find_parameters);
+
+    MuMiniZinc::dump_mutants(entries, mutant_folder_path);
 
     BOOST_REQUIRE(std::filesystem::exists(mutant_folder_path));
 
@@ -111,17 +168,66 @@ BOOST_AUTO_TEST_CASE(outdated_mutant)
     std::filesystem::last_write_time(normalized_model_path, std::filesystem::file_time_type::min() + std::chrono::hours { 1 });
     BOOST_REQUIRE(std::filesystem::last_write_time(model_path) > std::filesystem::last_write_time(normalized_model_path));
 
-    // Here we only care about throwing the OutdatedMutant exception, so just pass default values for the compiler path, arguments, etc.
-    BOOST_CHECK_THROW(mutation_model.run_mutants({}, {}, {}, {}, {}, {}, false, true), MutationModel::OutdatedMutant);
+    const MuMiniZinc::retrieve_mutants_args retrieve_parameters {
+        .model_path = model_path,
+        .directory_path = mutant_folder_path,
+        .allowed_operators = {},
+        .allowed_mutants = {},
+        .check_model_last_modified_time = true
+    };
 
-    mutation_model.clear_output_folder();
+    BOOST_CHECK_THROW(const auto new_entries = MuMiniZinc::retrieve_mutants(retrieve_parameters), MuMiniZinc::OutdatedMutant);
+
+    MuMiniZinc::clear_mutant_output_folder(model_path, mutant_folder_path);
 
     BOOST_REQUIRE(!std::filesystem::exists(mutant_folder_path));
 }
 
 BOOST_AUTO_TEST_CASE(unknown_operator)
 {
-    BOOST_REQUIRE_THROW(
-        const MutationModel mutation_model("data/no_mutants.mzn", std::array { ascii_ci_string_view { "operator_that_does_not_exist" } }),
-        MutationModel::UnknownOperator);
+    const std::filesystem::path model_path { "data/no_mutants.mzn" };
+    constexpr std::array unknown_operators { ascii_ci_string_view { "operator_that_does_not_exist" } };
+
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = unknown_operators,
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
+
+    BOOST_REQUIRE_THROW(const auto entries = MuMiniZinc::find_mutants(find_parameters), MuMiniZinc::UnknownOperator);
+}
+
+BOOST_AUTO_TEST_CASE(unknown_mutant)
+{
+    const std::filesystem::path model_path { "data/relational.mzn" };
+    constexpr std::array unknown_mutant { ascii_ci_string_view { "this_mutant_does_not_exist" } };
+
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = {},
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
+
+    auto entries = MuMiniZinc::find_mutants(find_parameters);
+
+    const auto compiler_path = boost::process::environment::find_executable("minizinc");
+    BOOST_REQUIRE(!compiler_path.empty());
+
+    const MuMiniZinc::run_mutants_args run_parameters {
+        .entry_result = entries,
+        .compiler_path = compiler_path,
+        .compiler_arguments = {},
+        .allowed_mutants = unknown_mutant,
+        .data_files = {},
+        .timeout = std::chrono::seconds { 10 },
+        .n_jobs = 0,
+        .check_compiler_version = true,
+        .output_log = {}
+    };
+
+    BOOST_REQUIRE_THROW(MuMiniZinc::run_mutants(run_parameters), MuMiniZinc::UnknownMutant);
 }

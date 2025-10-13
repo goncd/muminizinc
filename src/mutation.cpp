@@ -2,12 +2,12 @@
 
 #include <algorithm>    // std::ranges::contains, std::ranges::equal, std::ranges::next_permutation
 #include <array>        // std::array
-#include <chrono>       // std::chrono::seconds
 #include <cstddef>      // std::size_t
 #include <cstdint>      // std::uint64_t
 #include <filesystem>   // std::filesystem::absolute, std::filesystem::create_directory, std::filesystem::directory_iterator, std::filesystem::is_directory, std::filesystem::is_regular_file, std::filesystem::path, std::filesystem::remove_all
 #include <format>       // std::format
 #include <fstream>      // std::ifstream
+#include <functional>   // std::reference_wrapper
 #include <iostream>     // std::cerr
 #include <optional>     // std::optional
 #include <span>         // std::span
@@ -16,6 +16,7 @@
 #include <string>       // std::string
 #include <string_view>  // std::string_view
 #include <system_error> // std::error_code
+#include <type_traits>  // std::decay_t
 #include <utility>      // std::move, std::pair
 #include <vector>       // std::vector
 
@@ -27,10 +28,11 @@
 #include <minizinc/parser.hh>        // MiniZinc::parse
 #include <minizinc/prettyprinter.hh> // MiniZinc::Printer
 
-#include <build/config.hpp>            // config::is_debug_build
+#include <build/config.hpp>            // MiniZinc::config::is_debug_build
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <executor.hpp>                // MutantExecutor
+#include <executor.hpp>                //
 #include <logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
+#include <operators/mutator.hpp>       // MiniZinc::throw_if_invalid_operators
 
 namespace
 {
@@ -41,47 +43,6 @@ constexpr auto EXTENSION { ".mzn"sv };
 constexpr auto WIDTH_PRINTER { 80 };
 constexpr auto SEPARATOR { '-' };
 constexpr auto enum_keyword { "enum "sv };
-
-constexpr std::array relational_operators {
-    MiniZinc::BinOpType::BOT_LE,
-    MiniZinc::BinOpType::BOT_LQ,
-    MiniZinc::BinOpType::BOT_GR,
-    MiniZinc::BinOpType::BOT_GQ,
-    MiniZinc::BinOpType::BOT_EQ,
-    MiniZinc::BinOpType::BOT_NQ,
-};
-
-constexpr auto relational_operators_name { "REL"sv };
-
-constexpr std::array arithmetic_operators {
-    MiniZinc::BinOpType::BOT_PLUS,
-    MiniZinc::BinOpType::BOT_MINUS,
-    MiniZinc::BinOpType::BOT_MULT,
-    MiniZinc::BinOpType::BOT_DIV,
-    MiniZinc::BinOpType::BOT_IDIV,
-    MiniZinc::BinOpType::BOT_MOD,
-    MiniZinc::BinOpType::BOT_POW,
-};
-
-constexpr auto arithmetic_operators_name { "ART"sv };
-
-constexpr auto unary_operators_name { "UNA"sv };
-
-const std::array calls {
-    MiniZinc::Constants::constants().ids.forall,
-    MiniZinc::Constants::constants().ids.exists,
-};
-
-constexpr auto call_name { "CALL"sv };
-constexpr auto call_swap_name { "SWP"sv };
-
-constexpr std::array mutant_help {
-    std::pair { relational_operators_name, "Relational operators"sv },
-    std::pair { arithmetic_operators_name, "Arithmetic operators"sv },
-    std::pair { unary_operators_name, "Unary operators removal"sv },
-    std::pair { call_name, "Function calls"sv },
-    std::pair { call_swap_name, "Function call argument swap"sv }
-};
 
 constexpr bool is_quoted(std::string_view view) noexcept
 {
@@ -98,572 +59,41 @@ constexpr bool is_quoted(std::string_view view) noexcept
 
 }
 
-/*
- * This actually does not override anything because MiniZinc::EVisitor does not have
- * any virtual members, but we'll follow the convention. This is just static dispatching.
- *
- * The problem with this approach is that MiniZinc::EVisitor's visitors receive a pointer to
- * const, which makes it impossible to actually alter the AST unless we `const_cast` away the
- * const from the pointer. Of course, we know that the object is not actually const, so this is
- * not undefined behavior. And, as we don't actually override anything, we can just have non-
- * const arguments and the static dispatch will make it fail to compile in case we ever receive
- * an actual const object as a parameter for any of the visitors.
- *
- * There is an alternative, which is to "override" the `enter` method, which receives a pointer
- * to a non-cost expression object. Then, we can dynamically determine its type. The problem is
- * that, for whatever reason, the `enter` method is called twice for many operators in the AST,
- * which would yield duplicated mutants, so we can't do that.
- */
-class MutationModel::Mutator : public MiniZinc::EVisitor
+namespace
 {
-public:
-    constexpr explicit Mutator(MutationModel& mutation_model) noexcept;
 
-    void vBinOp(MiniZinc::BinOp* binOp);
-
-    void vCall(MiniZinc::Call* call);
-
-    [[nodiscard]] constexpr auto generated_mutants() const noexcept { return m_mutation_BinOp_count + m_mutation_UnOp_count + m_mutation_Call_count + m_mutation_Call_swap_count; }
-
-private:
-    MutationModel& m_mutation_model;
-
-    void perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name);
-    std::uint64_t m_mutation_BinOp_count {};
-
-    void perform_mutation_unop(MiniZinc::BinOp* op, std::string_view operator_name);
-    void perform_mutation_unop(MiniZinc::Call* call, std::string_view operator_name);
-    std::uint64_t m_mutation_UnOp_count {};
-
-    void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls, std::string_view operator_name);
-    std::uint64_t m_mutation_Call_count {};
-
-    void perform_call_swap_mutation(MiniZinc::Call* call);
-    std::uint64_t m_mutation_Call_swap_count {};
-};
-
-constexpr MutationModel::Mutator::Mutator(MutationModel& mutation_model) noexcept :
-    m_mutation_model { mutation_model }
-{
-}
-
-void MutationModel::Mutator::vBinOp(MiniZinc::BinOp* binOp)
-{
-    logd("vBinOP: Detected operation {}", binOp->opToString().c_str());
-
-    perform_mutation_unop(binOp, unary_operators_name);
-
-    std::span<const MiniZinc::BinOpType> operators;
-    std::string_view operator_name;
-
-    if (std::ranges::contains(relational_operators, binOp->op()))
-    {
-        operator_name = relational_operators_name;
-        operators = relational_operators;
-    }
-    else if (std::ranges::contains(arithmetic_operators, binOp->op()))
-    {
-        operator_name = arithmetic_operators_name;
-        operators = arithmetic_operators;
-    }
-
-    if (operators.empty())
-        logd("MutationModel::Mutator::vBinOp: Undetected mutation type");
-    else if (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { operator_name }))
-        perform_mutation(binOp, operators, operator_name);
-}
-
-void MutationModel::Mutator::vCall(MiniZinc::Call* call)
-{
-    logd("vCall: Detected call to {}", call->id().c_str());
-
-    perform_mutation_unop(call, unary_operators_name);
-
-    if (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { call_swap_name }))
-        perform_call_swap_mutation(call);
-
-    if (std::ranges::contains(calls, call->id()) && (m_mutation_model.m_allowed_operators.empty() || std::ranges::contains(m_mutation_model.m_allowed_operators, ascii_ci_string_view { call_name })))
-        perform_mutation(call, calls, call_name);
-    else
-        logd("MutationModel::Mutator::vCall: Unhandled call operation");
-}
-
-void MutationModel::Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name)
-{
-    const auto original_operator = op->op();
-    const auto& loc = MiniZinc::Expression::loc(op);
-
-    if constexpr (config::is_debug_build)
-    {
-        [[maybe_unused]] const auto& lhs = MiniZinc::Expression::loc(op->lhs());
-        [[maybe_unused]] const auto& rhs = MiniZinc::Expression::loc(op->rhs());
-
-        logd("Mutating {}-{} to {}-{}. LHS: {}-{} to {}-{}. RHS: {}-{} to {}-{}",
-            loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn(),
-            lhs.firstLine(), lhs.firstColumn(), lhs.lastLine(), lhs.lastColumn(),
-            rhs.firstLine(), rhs.firstColumn(), rhs.lastLine(), rhs.lastColumn());
-    }
-
-    std::uint64_t occurrence_id {};
-
-    for (auto candidate_operator : operators)
-    {
-        if (original_operator == candidate_operator)
-            continue;
-
-        new (op) MiniZinc::BinOp(loc, op->lhs(), candidate_operator, op->rhs());
-
-        logd("Mutating to {}", op->opToString().c_str());
-
-        m_mutation_model.save_current_model(operator_name, m_mutation_BinOp_count++, occurrence_id++);
-    }
-
-    // Go back to the original for the next iteration.
-    new (op) MiniZinc::BinOp(loc, op->lhs(), original_operator, op->rhs());
-}
-
-void MutationModel::Mutator::perform_mutation_unop(MiniZinc::BinOp* op, std::string_view operator_name)
-{
-    auto* const lhs = op->lhs();
-    auto* const rhs = op->rhs();
-
-    std::uint64_t occurrence_id {};
-
-    if (auto* unop = MiniZinc::Expression::dynamicCast<MiniZinc::UnOp>(lhs))
-    {
-        op->lhs(unop->e());
-        m_mutation_model.save_current_model(operator_name, m_mutation_UnOp_count++, occurrence_id++);
-        op->lhs(lhs);
-    }
-
-    if (auto* unop = MiniZinc::Expression::dynamicCast<MiniZinc::UnOp>(rhs))
-    {
-        op->rhs(unop->e());
-        m_mutation_model.save_current_model(operator_name, m_mutation_UnOp_count++, occurrence_id++);
-        op->rhs(rhs);
-    }
-}
-
-void MutationModel::Mutator::perform_mutation_unop(MiniZinc::Call* call, std::string_view operator_name)
-{
-    std::uint64_t occurrence_id {};
-
-    for (unsigned int i {}; i < call->argCount(); ++i)
-    {
-        auto* const original_element = call->arg(i);
-
-        if (auto* unop = MiniZinc::Expression::dynamicCast<MiniZinc::UnOp>(original_element))
-        {
-            call->arg(i, unop->e());
-            m_mutation_model.save_current_model(operator_name, m_mutation_UnOp_count++, occurrence_id++);
-            call->arg(i, original_element);
-        }
-    }
-}
-
-void MutationModel::Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls, std::string_view operator_name)
-{
-    const auto original_call = call->id();
-
-    if constexpr (config::is_debug_build)
-    {
-        [[maybe_unused]] const auto& loc = MiniZinc::Expression::loc(call);
-
-        logd("Mutating {}-{} to {}-{}",
-            loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn());
-    }
-
-    std::uint64_t occurrence_id {};
-
-    for (const auto& candidate_call : calls)
-    {
-        if (original_call == candidate_call)
-            continue;
-
-        logd("Mutating from {} to {}", original_call.c_str(), candidate_call.c_str());
-
-        call->id(candidate_call);
-
-        m_mutation_model.save_current_model(operator_name, m_mutation_Call_count++, occurrence_id++);
-    }
-
-    call->id(original_call);
-}
-
-void MutationModel::Mutator::perform_call_swap_mutation(MiniZinc::Call* call)
-{
-    if (call->argCount() <= 1)
-        return;
-
-    logd("Mutating argument order of call to {:s}.", call->id().c_str());
-
-    const auto calls { call->args() };
-    const std::vector original(calls.begin(), calls.end());
-
-    auto permutation { original };
-
-    std::ranges::sort(permutation);
-
-    std::uint64_t occurrence_id {};
-
-    do
-    {
-        if (std::ranges::equal(permutation, original))
-            continue;
-
-        call->args(permutation);
-
-        m_mutation_model.save_current_model("SWP", m_mutation_Call_swap_count++, occurrence_id++);
-
-    } while (std::ranges::next_permutation(permutation).found);
-
-    call->args(original);
-}
-
-MutationModel::MutationModel(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators, std::optional<std::reference_wrapper<std::ostream>> output_stream) :
-    m_model_path { std::filesystem::absolute(path) }, m_allowed_operators { allowed_operators }
-{
-    for (const auto mutant : m_allowed_operators)
-    {
-        bool found = false;
-
-        for (const auto& [name, _] : MutationModel::get_available_operators())
-        {
-            if (mutant == name)
-            {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found)
-            throw UnknownOperator { std::format("Unknown operator `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
-    }
-
-    const auto status = std::filesystem::status(m_model_path);
-
-    if (!std::filesystem::exists(status))
-        throw IOError { "The provided path does not exist." };
-
-    if (std::filesystem::is_directory(status))
-        throw IOError { "The provided path is a directory." };
-
-    if (!m_model_path.has_stem())
-        throw IOError { "Could not determine the filename without extension of the model." };
-
-    m_filename_stem = m_model_path.stem().generic_string();
-
-    if (output_stream.has_value())
-        m_output = logging::output(*output_stream);
-}
-
-MutationModel::MutationModel(const std::filesystem::path& path, const std::filesystem::path& output_directory, std::span<const ascii_ci_string_view> allowed_operators, std::optional<std::reference_wrapper<std::ostream>> output_stream) :
-    MutationModel { path, allowed_operators, output_stream }
-{
-    // Create the folder that will hold all the mutant code.
-    // First, we need to determine the name of the folder.
-    // If the given path is /test_file.mzn, then the folder will be /test_file/.
-    if ((output_directory.empty() && !m_model_path.has_relative_path()))
-        throw IOError { "Could not automatically determine the path for storing the mutants." };
-
-    m_mutation_folder_path = std::filesystem::absolute(output_directory.empty() ? m_model_path.parent_path() / std::format("{:s}-mutants", m_filename_stem) : output_directory);
-}
-
-void MutationModel::clear_output_folder()
-{
-    if (m_mutation_folder_path.empty())
-    {
-        if (m_entries.empty())
-            throw std::runtime_error { "There is nothing to clear." };
-
-        m_entries.clear();
-    }
-
-    if (!std::filesystem::is_directory(m_mutation_folder_path))
-        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
-
-    for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
-        if (!get_stem_if_valid(entry))
-            throw InvalidFile { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
-
-    std::filesystem::remove_all(m_mutation_folder_path);
-}
-
-void MutationModel::clear_memory() noexcept
-{
-    m_entries.clear();
-}
-
-bool MutationModel::find_mutants(std::string&& include_path, RunType run_type)
-{
-    if (!m_entries.empty())
-        clear_memory();
-
-    MiniZinc::Env env;
-
-    const std::ifstream ifstream { m_model_path };
-
-    std::stringstream buffer;
-    buffer << ifstream.rdbuf();
-
-    if (ifstream.bad())
-        throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
-
-    auto original_model_str = std::move(buffer).str();
-
-    if (original_model_str.empty())
-        throw EmptyFile { "Empty file given. Nothing to do." };
-
-    std::vector<std::string> include_paths;
-
-    if (!include_path.empty())
-    {
-        logd("Given path: {:s}", include_path);
-        include_paths.emplace_back(std::forward<std::string>(include_path));
-    }
-
-    const auto share_directory_result = MiniZinc::FileUtils::share_directory();
-
-    if (!share_directory_result.empty())
-    {
-        logd("Calculated path: {:s}", share_directory_result);
-        include_paths.emplace_back(std::format("{:s}/std/", share_directory_result));
-    }
-
-    m_model = MiniZinc::parse(env, {}, {}, original_model_str, m_model_path, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
-
-    if (m_mutation_folder_path.empty())
-        m_entries.emplace_back();
-    else
-    {
-        // If a folder with such name exists, then we're OK as long as it's empty. If it has contents, there might be
-        // code from an old analysis.
-        // Of course, we'll create the folder if it doesn't already exist.
-        if (std::filesystem::is_directory(m_mutation_folder_path))
-        {
-            if (!std::filesystem::is_empty(m_mutation_folder_path))
-                throw std::runtime_error { std::format(R"(The selected path for storing the mutants, `{:s}`, is non-empty. Please run `clean` first or manually remove or empty the folder to avoid accidental data loss.)", m_mutation_folder_path.generic_string()) };
-        }
-    }
-
-    Mutator mutator { *this };
-
-    for (const auto* const item : *m_model)
-    {
-        if (const auto* const varDeclI = item->dynamicCast<MiniZinc::VarDeclI>())
-        {
-            const auto* const expression = varDeclI->e();
-
-            const auto* const type_inst = expression->ti();
-
-            if (type_inst == nullptr || !type_inst->isEnum())
-                continue;
-
-            const auto str = expression->id()->v();
-            const std::string_view view { str.c_str(), str.size() };
-
-            logd("Detected enum \"{:s}\".", view);
-
-            m_detected_enums.emplace_back(std::format("set of int: {:s}", view),
-                std::format("{:s}{:s}", enum_keyword, view));
-        }
-    }
-
-    // If we don't have to detect any mutants, just save the original model
-    // and stop here.
-    if (run_type == RunType::NoDetection)
-    {
-        save_current_model({}, 0, 0);
-        return true;
-    }
-
-    for (const auto* const item : *m_model)
-    {
-        if (const auto* constraintI = item->dynamicCast<MiniZinc::ConstraintI>())
-            MiniZinc::top_down(mutator, constraintI->e());
-        else if (const auto* solveI = item->dynamicCast<MiniZinc::SolveI>(); solveI != nullptr && solveI->e() != nullptr)
-            MiniZinc::top_down(mutator, solveI->e());
-        else if (const auto* outputI = item->dynamicCast<MiniZinc::OutputI>())
-            MiniZinc::top_down(mutator, outputI->e());
-    }
-
-    const auto generated_mutants = mutator.generated_mutants();
-
-    if (generated_mutants == 0)
-        m_output.println("Couldn't detect any mutants.");
-    else
-    {
-        m_output.println("\nGenerated {:s}{:d}{:s} mutants.", logging::code(logging::Color::Blue), generated_mutants, logging::code(logging::Style::Reset));
-
-        // Save the original file passed through the compiler to normalize it so we can
-        // diff from it cleanly. Only print it if we actually detected any mutants at all, though.
-        save_current_model({}, 0, 0);
-    }
-
-    return generated_mutants != 0;
-}
-
-void MutationModel::save_current_model(std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id)
-{
-    if (m_model == nullptr)
-        throw std::runtime_error { "There is no model to print." };
-
-    std::ostringstream ostringstream;
-    MiniZinc::Printer printer(ostringstream, WIDTH_PRINTER, false);
-    printer.print(m_model);
-
-    std::string output = std::move(ostringstream).str();
-
-    fix_enums(output);
-
-    std::string mutant;
-
-    if (!mutant_name.empty())
-    {
-        mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_filename_stem, SEPARATOR, mutant_name, SEPARATOR, mutant_id, SEPARATOR, occurrence_id);
-        m_output.println("Generating mutant `{:s}{:s}{:s}`", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset));
-    }
-
-    if (m_mutation_folder_path.empty())
-    {
-        if (mutant_name.empty())
-        {
-            if (!m_entries.front().name.empty())
-                throw IOError { "Trying to store the original source more than once." };
-
-            m_entries.front().name = m_filename_stem;
-            m_entries.front().contents = std::move(output);
-        }
-        else
-            m_entries.emplace_back(mutant, std::move(output));
-    }
-    else
-    {
-        std::filesystem::create_directory(m_mutation_folder_path);
-
-        const auto path = (m_mutation_folder_path / (mutant_name.empty() ? m_filename_stem : mutant)).replace_extension(EXTENSION);
-
-        if (std::filesystem::exists(path))
-            throw IOError { std::format(R"(A mutant with the path "{:s}" already exists. This shouldn't happen.)", path.native()) };
-
-        std::ofstream file { path };
-
-        if (!file.is_open())
-            throw IOError { std::format(R"(Could not open the mutant file "{:s}".)", path.native()) };
-
-        file << output;
-    }
-}
-
-void MutationModel::run_mutants(const std::filesystem::path& compiler_path, std::span<const std::string_view> compiler_arguments, std::span<const std::string> data_files, std::chrono::seconds timeout, std::uint64_t n_jobs, std::span<const ascii_ci_string_view> mutants, bool check_compiler_version, bool check_model_last_modified_time)
-{
-    if (m_entries.empty() && !std::filesystem::is_directory(m_mutation_folder_path))
-        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", m_mutation_folder_path.native()) };
-
-    if (m_mutation_folder_path.empty() && m_entries.size() == 1)
-        throw std::runtime_error { "Couldn't run any mutants because there aren't any." };
-
-    if (m_entries.empty())
-    {
-        // Insert the original model first.
-        const std::ifstream ifstream { m_model_path };
-        std::stringstream buffer;
-        buffer << ifstream.rdbuf();
-
-        if (ifstream.bad())
-            throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
-
-        m_entries.emplace_back(m_filename_stem, std::move(buffer).str());
-
-        std::error_code last_write_ec {};
-        const auto last_write_time_original = check_model_last_modified_time ? std::filesystem::last_write_time(m_model_path, last_write_ec) : std::filesystem::file_time_type::min();
-
-        // Insert all the mutants found in the folder, but skip the original model.
-        for (const auto& entry : std::filesystem::directory_iterator { m_mutation_folder_path })
-        {
-            const auto stem = get_stem_if_valid(entry);
-
-            if (!stem)
-                throw InvalidFile { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
-
-            if (last_write_time_original > std::filesystem::file_time_type::min() && !last_write_ec)
-            {
-                const auto last_write_time_mutant { std::filesystem::last_write_time(entry, last_write_ec) };
-
-                if (!last_write_ec && last_write_time_original > last_write_time_mutant)
-                    throw OutdatedMutant { "The original model is newer than the mutants, so they might be outdated. Please re-analyse the original model." };
-            }
-
-            if (*stem == m_filename_stem)
-                continue;
-
-            if (!m_allowed_operators.empty())
-            {
-                ascii_ci_string_view entry_view { *stem };
-
-                if (const auto pos = entry_view.find_first_not_of(ascii_ci_string_view { m_filename_stem }); pos != ascii_ci_string_view::npos)
-                    entry_view = entry_view.substr(pos + 1);
-
-                if (std::ranges::none_of(m_allowed_operators, [entry_view](auto op)
-                        { return entry_view.contains(op); }))
-                    continue;
-            }
-
-            if (!mutants.empty() && !std::ranges::contains(mutants, ascii_ci_string_view { *stem }))
-                continue;
-
-            const std::ifstream ifstream { entry.path() };
-            std::stringstream buffer;
-            buffer << ifstream.rdbuf();
-
-            if (ifstream.bad())
-                throw IOError { std::format(R"(Could not open the file "{:s}".)", m_model_path.native()) };
-
-            auto str = std::move(buffer).str();
-
-            if (str.empty())
-                throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), entry.path().native(), code(logging::Style::Reset)) };
-
-            m_entries.emplace_back(*std::move(stem), std::move(str));
-        }
-    }
-
-    const configuration configuration {
-        .path = compiler_path,
-        .compiler_arguments = compiler_arguments,
-        .data_files = data_files,
-        .models = m_entries,
-        .timeout = timeout,
-        .n_jobs = n_jobs,
-        .mutants = mutants,
-        .check_compiler_version = check_compiler_version,
-        .logging_output = m_output
-    };
-
-    execute_mutants(configuration);
-}
-
-[[nodiscard]] std::span<const std::pair<std::string_view, std::string_view>> MutationModel::get_available_operators()
-{
-    return mutant_help;
-}
-
-std::optional<std::string> MutationModel::get_stem_if_valid(const std::filesystem::directory_entry& entry) const noexcept
+std::optional<std::string> get_stem_if_valid(const std::string_view model_stem, const std::filesystem::directory_entry& entry) noexcept
 {
     if (!entry.is_regular_file() || entry.path().extension() != EXTENSION)
         return std::nullopt;
 
     auto str = entry.path().stem().string();
 
-    if (str == m_filename_stem || (str.starts_with(m_filename_stem) && str.size() >= m_filename_stem.size() + 1 && str[m_filename_stem.size()] == SEPARATOR))
+    if (str == model_stem || (str.starts_with(model_stem) && str.size() >= model_stem.size() + 1 && str[model_stem.size()] == SEPARATOR))
         return str;
 
     return std::nullopt;
 }
 
-void MutationModel::fix_enums(std::string& model)
+void dump_file(const std::filesystem::path& path, std::string_view contents)
 {
-    for (const auto& [string_to_find, string_to_replace] : m_detected_enums)
+    if (std::filesystem::exists(path))
+        throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` already exists.", logging::code(logging::Color::Blue), path.native(), logging::code(logging::Style::Reset)) };
+
+    std::ofstream file { path };
+
+    if (!file.is_open())
+        throw MuMiniZinc::IOError { std::format(R"(Could not open the mutant file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), path.native(), logging::code(logging::Style::Reset)) };
+
+    file << contents;
+
+    if (file.bad())
+        throw MuMiniZinc::IOError { std::format(R"(Could not write to the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), path.native(), logging::code(logging::Style::Reset)) };
+}
+
+constexpr void fix_enums(const std::span<const std::pair<std::string, std::string>>& detected_enums, std::string& model)
+{
+    for (const auto& [string_to_find, string_to_replace] : detected_enums)
     {
         std::string::size_type pos {};
 
@@ -683,4 +113,302 @@ void MutationModel::fix_enums(std::string& model)
             pos += string_to_find.size();
         }
     }
+}
+
+constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::string>
+{
+    using T = std::decay_t<decltype(element)>;
+
+    if constexpr (std::is_same_v<T, MuMiniZinc::find_mutants_args::ModelDetails>)
+        return std::pair { element.name, element.contents };
+    else if constexpr (!std::is_same_v<T, std::reference_wrapper<const std::filesystem::path>>)
+        static_assert(false, "Unknown variant type.");
+    else
+    {
+        const auto status = std::filesystem::status(element);
+
+        if (!std::filesystem::exists(status))
+            throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), element.get().native(), logging::code(logging::Style::Reset)) };
+
+        if (std::filesystem::is_directory(status))
+            throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` is a directory.", logging::code(logging::Color::Blue), element.get().native(), logging::code(logging::Style::Reset)) };
+
+        if (!element.get().has_stem())
+            throw MuMiniZinc::IOError { "Could not determine the filename without extension of the model." };
+
+        const std::ifstream ifstream { element.get() };
+
+        std::stringstream buffer;
+        buffer << ifstream.rdbuf();
+
+        if (ifstream.bad())
+            throw MuMiniZinc::IOError { std::format(R"(Could not open the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), element.get().native(), logging::code(logging::Style::Reset)) };
+
+        return std::pair { element.get().stem().string(), std::move(buffer).str() };
+    }
+};
+
+}
+
+namespace MuMiniZinc
+{
+
+void EntryResult::save_model(const MiniZinc::Model* model, std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums)
+{
+    if (model == nullptr)
+        throw std::runtime_error { "There is no model to print." };
+
+    std::ostringstream ostringstream;
+    MiniZinc::Printer printer(ostringstream, WIDTH_PRINTER, false);
+    printer.print(model);
+
+    auto output = std::move(ostringstream).str();
+
+    fix_enums(detected_enums, output);
+
+    const auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_model_name, SEPARATOR, mutant_name, SEPARATOR, mutant_id, SEPARATOR, occurrence_id);
+
+    m_mutants.emplace_back(mutant, std::move(output));
+}
+
+[[nodiscard]] std::filesystem::path get_path_from_model_path(const std::filesystem::path& model_path)
+{
+    if ((!model_path.has_relative_path()))
+        throw IOError { "Could not automatically determine the path for storing the mutants." };
+
+    if (!model_path.has_stem())
+        throw IOError { "Could not determine the filename without extension of the model." };
+
+    return std::filesystem::absolute(model_path.parent_path() / std::format("{:s}-mutants", model_path.stem().string()));
+}
+
+[[nodiscard]] EntryResult find_mutants(const find_mutants_args& parameters)
+{
+    throw_if_invalid_operators(parameters.allowed_operators);
+
+    auto [model_name, model_contents] = std::visit(get_model, parameters.model);
+
+    if (model_contents.empty())
+        throw EmptyFile { "Empty file given. Nothing to do." };
+
+    std::vector<std::string> include_paths;
+
+    if (!parameters.include_path.empty())
+    {
+        logd("Given include path: {:s}", parameters.include_path);
+        include_paths.emplace_back(parameters.include_path);
+    }
+
+    const auto share_directory_result = MiniZinc::FileUtils::share_directory();
+
+    if (!share_directory_result.empty())
+    {
+        logd("Calculated include path: {:s}", share_directory_result);
+        include_paths.emplace_back(std::format("{:s}/std/", share_directory_result));
+    }
+
+    MiniZinc::Env env;
+
+    const auto* const model = MiniZinc::parse(env, {}, {}, model_contents, model_name, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
+
+    std::vector<std::pair<std::string, std::string>> detected_enums;
+
+    for (const auto* const item : *model)
+    {
+        if (const auto* const varDeclI = item->dynamicCast<MiniZinc::VarDeclI>())
+        {
+            const auto* const expression = varDeclI->e();
+
+            const auto* const type_inst = expression->ti();
+
+            if (type_inst == nullptr || !type_inst->isEnum())
+                continue;
+
+            const auto str = expression->id()->v();
+            const std::string_view view { str.c_str(), str.size() };
+
+            logd("Detected enum \"{:s}\".", view);
+
+            detected_enums.emplace_back(std::format("set of int: {:s}", view),
+                std::format("{:s}{:s}", enum_keyword, view));
+        }
+    }
+
+    EntryResult entry_result;
+
+    entry_result.m_model_name = model_name;
+
+    std::ostringstream ostringstream;
+    MiniZinc::Printer printer(ostringstream, WIDTH_PRINTER, false);
+    printer.print(model);
+
+    entry_result.m_model_contents = std::move(ostringstream).str();
+
+    fix_enums(detected_enums, entry_result.m_model_contents);
+
+    if (parameters.run_type == MuMiniZinc::find_mutants_args::RunType::FullRun)
+    {
+        Mutator mutator { model, parameters.allowed_operators, entry_result, detected_enums };
+
+        for (const auto* const item : *model)
+        {
+            if (const auto* constraintI = item->dynamicCast<MiniZinc::ConstraintI>())
+                MiniZinc::top_down(mutator, constraintI->e());
+            else if (const auto* solveI = item->dynamicCast<MiniZinc::SolveI>(); solveI != nullptr && solveI->e() != nullptr)
+                MiniZinc::top_down(mutator, solveI->e());
+            else if (const auto* outputI = item->dynamicCast<MiniZinc::OutputI>())
+                MiniZinc::top_down(mutator, outputI->e());
+        }
+    }
+
+    return entry_result;
+}
+
+[[nodiscard]] EntryResult retrieve_mutants(const retrieve_mutants_args& parameters)
+{
+    throw_if_invalid_operators(parameters.allowed_operators);
+
+    if (!std::filesystem::is_directory(parameters.directory_path))
+        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", parameters.directory_path.native()) };
+
+    // Insert the original model first.
+    const std::ifstream ifstream { parameters.model_path };
+    std::stringstream buffer;
+    buffer << ifstream.rdbuf();
+
+    if (ifstream.bad())
+        throw IOError { std::format(R"(Could not open the file "{:s}".)", parameters.model_path.native()) };
+
+    if (!parameters.model_path.has_stem())
+        throw IOError { "Could not determine the filename without extension of the model." };
+
+    EntryResult entry_result;
+
+    entry_result.m_model_name = parameters.model_path.stem().generic_string();
+    entry_result.m_model_contents = std::move(buffer).str();
+
+    std::error_code last_write_ec {};
+    const auto last_write_time_original = parameters.check_model_last_modified_time ? std::filesystem::last_write_time(parameters.model_path, last_write_ec) : std::filesystem::file_time_type::min();
+
+    // Insert all the mutants found in the folder, but skip the original model.
+    for (const auto& entry : std::filesystem::directory_iterator { parameters.directory_path })
+    {
+        const auto stem = get_stem_if_valid(entry_result.m_model_name, entry);
+
+        if (!stem)
+            throw InvalidFile { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
+
+        if (last_write_time_original > std::filesystem::file_time_type::min() && !last_write_ec)
+        {
+            const auto last_write_time_mutant { std::filesystem::last_write_time(entry, last_write_ec) };
+
+            if (!last_write_ec && last_write_time_original > last_write_time_mutant)
+                throw OutdatedMutant { "The original model is newer than the mutants, so they might be outdated. Please re-analyse the original model." };
+        }
+
+        if (*stem == entry_result.m_model_name)
+            continue;
+
+        if (!parameters.allowed_operators.empty())
+        {
+            ascii_ci_string_view entry_view { *stem };
+
+            if (const auto pos = entry_view.find_first_not_of(ascii_ci_string_view { entry_result.m_model_name }); pos != ascii_ci_string_view::npos)
+                entry_view = entry_view.substr(pos + 1);
+
+            if (std::ranges::none_of(parameters.allowed_operators, [entry_view](auto op)
+                    { return entry_view.contains(op); }))
+                continue;
+        }
+
+        if (!parameters.allowed_mutants.empty() && !std::ranges::contains(parameters.allowed_mutants, ascii_ci_string_view { *stem }))
+            continue;
+
+        const std::ifstream ifstream { entry.path() };
+        std::stringstream buffer;
+        buffer << ifstream.rdbuf();
+
+        if (ifstream.bad())
+            throw IOError { std::format(R"(Could not open the file "{:s}".)", entry.path().native()) };
+
+        auto str = std::move(buffer).str();
+
+        if (str.empty())
+            throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), entry.path().native(), code(logging::Style::Reset)) };
+
+        entry_result.m_mutants.emplace_back(*std::move(stem), std::move(str));
+    }
+
+    return entry_result;
+}
+
+void dump_mutants(const EntryResult& entries, const std::filesystem::path& directory)
+{
+    if (entries.mutants().empty())
+        return;
+
+    if (std::filesystem::exists(directory))
+    {
+        if (!std::filesystem::is_directory(directory))
+            throw MuMiniZinc::IOError { std::format("The selected path for storing the mutants, `{:s}{:s}{:s}`, is not a directory.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
+    }
+    else
+    {
+        std::error_code error_code;
+
+        if (!std::filesystem::create_directory(directory, error_code) || error_code)
+            throw MuMiniZinc::IOError { std::format("Couldn't create the directory `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
+    }
+
+    if (!std::filesystem::is_empty(directory))
+        throw MuMiniZinc::IOError { std::format("The selected path for storing the mutants, `{:s}{:s}{:s}`, is non-empty. Please clean it first to avoid accidental data loss.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
+
+    for (const auto& mutant : entries.mutants())
+    {
+        const auto path = (directory / mutant.name).replace_extension(EXTENSION);
+        dump_file(path, mutant.contents);
+    }
+
+    // Dump the normalized model.
+    const auto path = (directory / entries.model_name()).replace_extension(EXTENSION);
+    dump_file(path, entries.normalized_model());
+}
+
+void run_mutants(const run_mutants_args& parameters)
+{
+    if (parameters.entry_result.mutants().empty())
+        return;
+
+    const execution_args configuration {
+        .compiler_path = parameters.compiler_path,
+        .compiler_arguments = parameters.compiler_arguments,
+        .data_files = parameters.data_files,
+        .entry_result = parameters.entry_result,
+        .timeout = parameters.timeout,
+        .n_jobs = parameters.n_jobs,
+        .allowed_mutants = parameters.allowed_mutants,
+        .check_compiler_version = parameters.check_compiler_version,
+        .output_log = parameters.output_log
+    };
+
+    execute_mutants(configuration);
+}
+
+void clear_mutant_output_folder(const std::filesystem::path& model_path, const std::filesystem::path& output_directory)
+{
+    if (output_directory.empty())
+        throw std::runtime_error { "There is nothing to clear." };
+
+    if (!std::filesystem::is_directory(output_directory))
+        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", output_directory.native()) };
+
+    const auto model_path_stem = model_path.stem().string();
+
+    for (const auto& entry : std::filesystem::directory_iterator { output_directory })
+        if (!get_stem_if_valid(model_path_stem, entry))
+            throw InvalidFile { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
+
+    std::filesystem::remove_all(output_directory);
+}
+
 }

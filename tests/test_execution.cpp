@@ -4,7 +4,7 @@
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
 
 #include <mutation.hpp> // MutationModel
-#include <ranges>       // std::views::drop
+#include <ranges>       // std::views::enumerate
 #include <string>       // std::string
 #include <string_view>  // std::string_view
 #include <type_traits>  // std::underlying_type
@@ -17,30 +17,48 @@ namespace
 
 constexpr auto operator""_status(unsigned long long value) noexcept
 {
-    return static_cast<std::underlying_type_t<MutationModel::Entry::Status>>(value);
+    return static_cast<std::underlying_type_t<MuMiniZinc::Entry::Status>>(value);
 }
 
 void perform_test(const std::filesystem::path& path, std::span<const ascii_ci_string_view> allowed_operators, std::span<const std::string> data_files, std::span<const std::uint8_t> results, const std::filesystem::path& output_directory = {})
 {
-    MutationModel mutation_model;
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = path,
+        .allowed_operators = allowed_operators,
+        .log_output = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+    };
 
-    if (output_directory.empty())
-        mutation_model = MutationModel { path, allowed_operators };
-    else
-        mutation_model = MutationModel { path, output_directory, allowed_operators };
+    auto entries = MuMiniZinc::find_mutants(find_parameters);
 
-    BOOST_REQUIRE(mutation_model.find_mutants());
-    const auto executable = boost::process::environment::find_executable("minizinc");
-
-    BOOST_REQUIRE(!executable.empty());
-
-    mutation_model.run_mutants(executable, {}, data_files, std::chrono::seconds { 10 }, 0, {}, true, true);
+    BOOST_REQUIRE(!entries.mutants().empty());
 
     if (!output_directory.empty())
-        mutation_model.clear_output_folder();
+        MuMiniZinc::dump_mutants(entries, output_directory);
+
+    const auto compiler_path = boost::process::environment::find_executable("minizinc");
+    BOOST_REQUIRE(!compiler_path.empty());
+
+    const MuMiniZinc::run_mutants_args run_parameters {
+        .entry_result = entries,
+        .compiler_path = compiler_path,
+        .compiler_arguments = {},
+        .allowed_mutants = {},
+        .data_files = data_files,
+        .timeout = std::chrono::seconds { 10 },
+        .n_jobs = 0,
+        .check_compiler_version = true,
+        .output_log = {}
+    };
+
+    MuMiniZinc::run_mutants(run_parameters);
+
+    if (!output_directory.empty())
+        MuMiniZinc::clear_mutant_output_folder(path, output_directory);
 
     auto expected_result_iterator = results.begin();
-    for (const auto& entry : mutation_model.get_entries() | std::views::drop(1))
+    for (const auto& entry : entries.mutants())
     {
         for (const auto [index, value] : entry.results | std::views::enumerate)
         {
@@ -151,6 +169,7 @@ BOOST_AUTO_TEST_CASE(unary)
     };
 
     constexpr std::array unary_results {
+        0_status,
         0_status,
         1_status,
     };

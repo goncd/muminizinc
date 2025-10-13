@@ -1,3 +1,4 @@
+
 #include <arguments.hpp>
 
 #include <algorithm>    // std::ranges::find_if
@@ -27,6 +28,7 @@
 #include <executor.hpp>                // BadVersion
 #include <logging.hpp>                 // logging::code, logging::Color, logging::Style
 #include <mutation.hpp>                // MutationModel
+#include <operators/mutator.hpp>       // Mutator::get_available_operators
 
 namespace
 {
@@ -333,14 +335,14 @@ void throw_operator_option_error(std::string_view message)
 {
     auto error_string = std::format("{:s}\n\n{:s}{:s}Available operators{:s}:", message, logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
 
-    const auto available_operators = MutationModel::get_available_operators();
+    const auto available_operators = MuMiniZinc::get_available_operators();
 
     const auto largest_operator = std::ranges::max_element(available_operators,
         {}, [](const auto& element)
         { return element.first; })
                                       ->first.length();
 
-    for (const auto& [name, help] : MutationModel::get_available_operators())
+    for (const auto& [name, help] : MuMiniZinc::get_available_operators())
         error_string += std::format("\n  {:<{}}  {}", name, largest_operator + 2, help);
 
     throw Exception { error_string };
@@ -358,9 +360,9 @@ int print_help()
         { return !command.is_option() ? std::string_view::size_type {} : command.option.name.length(); })
                                                ->option.name.length();
 
-    std::println("{:s} is a mutation test tool for MiniZinc models.", config::project_fancy_name);
+    std::println("{:s} is a mutation test tool for MiniZinc models.", MuMiniZinc::config::project_fancy_name);
 
-    std::println("\n{0:}{1:}Usage{2:}: ./{3:s} [COMMAND]\n\n{0:}{1:}Commands{2:}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), config::executable_name);
+    std::println("\n{0:}{1:}Usage{2:}: ./{3:s} [COMMAND]\n\n{0:}{1:}Commands{2:}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), MuMiniZinc::config::executable_name);
 
     for (const auto& command : commands | std::views::filter([](const auto& command)
                                    { return !command.is_option() && !command.is_hidden; }))
@@ -378,7 +380,7 @@ int help_subcommand(const Command& command)
 {
     std::println("{}", command.option.help);
 
-    std::println("\n{:s}{:s}Usage{:s}: ./{:s} {:s} <MODEL> <ARGUMENTS>", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), config::executable_name, command.option.name);
+    std::println("\n{:s}{:s}Usage{:s}: ./{:s} {:s} <MODEL> <ARGUMENTS>", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), MuMiniZinc::config::executable_name, command.option.name);
 
     const auto largest_option = std::ranges::max_element(command.options,
         {}, [](const Option& option)
@@ -424,7 +426,7 @@ int applyall(std::span<const std::string_view> arguments)
     std::string_view model_path;
     std::string_view output_directory;
     std::string_view include_path;
-    std::vector<ascii_ci_string_view> operators;
+    std::vector<ascii_ci_string_view> allowed_operators;
 
     for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
@@ -443,7 +445,7 @@ int applyall(std::span<const std::string_view> arguments)
                 throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_operator.name));
 
             for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
-                operators.emplace_back(op);
+                allowed_operators.emplace_back(op);
 
             ++i;
         }
@@ -468,13 +470,31 @@ int applyall(std::span<const std::string_view> arguments)
 
     try
     {
-        MutationModel model { model_path, output_directory, operators, std::cout };
+        const std::filesystem::path model_path_str { model_path };
 
-        model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
+        const MuMiniZinc::find_mutants_args parameters {
+            .model = model_path_str,
+            .allowed_operators = allowed_operators,
+            .log_output = {},
+            .include_path = include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(),
+            .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+        };
+
+        const auto entries { MuMiniZinc::find_mutants(parameters) };
+
+        if (entries.mutants().empty())
+            std::println("Couldn't detect any mutants.");
+        else
+        {
+            const auto calculated_output_directory = output_directory.empty() ? MuMiniZinc::get_path_from_model_path(model_path) : std::filesystem::path { output_directory };
+            MuMiniZinc::dump_mutants(entries, calculated_output_directory);
+
+            std::println("Saved {0:s}{2:d}{1:s} mutants to `{0:s}{3:s}{1:s}`.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size(), calculated_output_directory.native());
+        }
     }
-    catch (const MutationModel::UnknownOperator& unknown_operator)
+    catch (const MuMiniZinc::UnknownOperator& unknown_operator)
     {
-        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
+        throw_operator_option_error<MuMiniZinc::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
     }
 
     return EXIT_SUCCESS;
@@ -484,7 +504,7 @@ int analyse(std::span<const std::string_view> arguments)
 {
     std::string_view model_path;
     std::string_view include_path;
-    std::vector<ascii_ci_string_view> operators;
+    std::vector<ascii_ci_string_view> allowed_operators;
 
     for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
@@ -503,7 +523,7 @@ int analyse(std::span<const std::string_view> arguments)
                 throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_operator.name));
 
             for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
-                operators.emplace_back(op);
+                allowed_operators.emplace_back(op);
 
             ++i;
         }
@@ -520,13 +540,41 @@ int analyse(std::span<const std::string_view> arguments)
 
     try
     {
-        MutationModel model { model_path, operators, std::cout };
+        std::variant<MuMiniZinc::find_mutants_args::ModelDetails, std::reference_wrapper<const std::filesystem::path>> variant;
 
-        model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
+        std::filesystem::path model_path_str;
+
+        if (model_path == "-"sv)
+        {
+            std::ostringstream ostringstream;
+            ostringstream << std::cin.rdbuf();
+
+            variant.emplace<0>("stdin", std::move(ostringstream).str());
+        }
+        else
+        {
+            model_path_str = model_path;
+            variant.emplace<1>(model_path_str);
+        }
+
+        const MuMiniZinc::find_mutants_args parameters {
+            .model = variant,
+            .allowed_operators = allowed_operators,
+            .log_output = logging::output { std::cout },
+            .include_path = include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(),
+            .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+        };
+
+        const auto entries { MuMiniZinc::find_mutants(parameters) };
+
+        if (entries.mutants().empty())
+            std::println("Couldn't detect any mutants.");
+        else
+            std::println("Detected {0:s}{2:d}{1:s} mutants.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size());
     }
-    catch (const MutationModel::UnknownOperator& unknown_operator)
+    catch (const MuMiniZinc::UnknownOperator& unknown_operator)
     {
-        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
+        throw_operator_option_error<MuMiniZinc::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
     }
 
     return EXIT_SUCCESS;
@@ -539,12 +587,12 @@ int run(std::span<const std::string_view> arguments)
     std::string_view compiler_path { "minizinc" };
     std::string_view include_path;
     std::span<const std::string_view> remaining_args;
-    std::vector<ascii_ci_string_view> operators;
+    std::vector<ascii_ci_string_view> allowed_operators;
     bool in_memory { false };
     const char* output { nullptr };
     std::uint64_t n_jobs { default_n_jobs };
     std::vector<std::string> data_files;
-    std::vector<ascii_ci_string_view> mutants;
+    std::vector<ascii_ci_string_view> allowed_mutants;
     bool check_compiler_version { true };
     bool check_model_last_modified_time { true };
 
@@ -568,7 +616,7 @@ int run(std::span<const std::string_view> arguments)
                 throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_mutant.name) };
 
             for (const auto mutant : std::views::split(arguments[i + 1], separator_arguments))
-                mutants.emplace_back(mutant);
+                allowed_mutants.emplace_back(mutant);
 
             ++i;
         }
@@ -655,7 +703,7 @@ int run(std::span<const std::string_view> arguments)
                 throw_operator_option_error<BadArgument>(std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_operator.name));
 
             for (const auto op : std::views::split(arguments[i + 1], separator_arguments))
-                operators.emplace_back(op);
+                allowed_operators.emplace_back(op);
 
             ++i;
         }
@@ -722,78 +770,125 @@ int run(std::span<const std::string_view> arguments)
             throw BadArgument { std::format("{:s}: Could not open the output file `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), output, logging::code(logging::Style::Reset)) };
     }
 
-    MutationModel model;
+    const std::filesystem::path model_path_str { model_path };
+
+    MuMiniZinc::EntryResult entries;
 
     try
     {
-        model = (in_memory) ? MutationModel { model_path, operators, std::cout } : MutationModel { model_path, output_directory, operators, std::cout };
+        if (in_memory)
+        {
+            std::variant<MuMiniZinc::find_mutants_args::ModelDetails, std::reference_wrapper<const std::filesystem::path>> variant;
+
+            std::filesystem::path model_path_str;
+
+            if (model_path == "-"sv)
+            {
+                std::ostringstream ostringstream;
+                ostringstream << std::cin.rdbuf();
+
+                variant.emplace<0>("stdin", std::move(ostringstream).str());
+            }
+            else
+            {
+                model_path_str = model_path;
+                variant.emplace<1>(model_path_str);
+            }
+
+            const MuMiniZinc::find_mutants_args parameters {
+                .model = variant,
+                .allowed_operators { allowed_operators },
+                .log_output { std::cout },
+                .include_path { include_path },
+                .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
+            };
+
+            entries = MuMiniZinc::find_mutants(parameters);
+        }
+        else
+        {
+            const auto calculated_output_directory = output_directory.empty() ? MuMiniZinc::get_path_from_model_path(model_path) : std::filesystem::path { output_directory };
+
+            const MuMiniZinc::retrieve_mutants_args parameters {
+                .model_path = model_path_str,
+                .directory_path = calculated_output_directory,
+                .allowed_operators = allowed_operators,
+                .allowed_mutants = allowed_mutants,
+                .check_model_last_modified_time = check_model_last_modified_time
+            };
+
+            entries = MuMiniZinc::retrieve_mutants(parameters);
+        }
     }
-    catch (const MutationModel::UnknownOperator& unknown_operator)
+    catch (const MuMiniZinc::UnknownOperator& unknown_operator)
     {
-        throw_operator_option_error<MutationModel::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
+        throw_operator_option_error<MuMiniZinc::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
     }
 
-    bool should_run = true;
+    if (entries.mutants().empty())
+        throw std::runtime_error { std::format("{:s}: Couldn't find any mutants to run.", arguments.front()) };
 
-    if (in_memory)
-        should_run = model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string());
+    const MuMiniZinc::run_mutants_args parameters {
+        .entry_result = entries,
+        .compiler_path = executable,
+        .compiler_arguments = remaining_args,
+        .allowed_mutants = allowed_mutants,
+        .data_files = data_files,
+        .timeout { timeout_seconds },
+        .n_jobs = n_jobs,
+        .check_compiler_version = check_compiler_version,
+        .output_log { std::cout }
+    };
 
     std::size_t n_invalid {}, n_alive {}, n_dead {};
 
     const std::ostreambuf_iterator<char> output_stream { output_file.has_value() ? *output_file : std::cout };
 
-    if (should_run)
+    try
     {
-        if (in_memory)
-            std::println();
+        MuMiniZinc::run_mutants(parameters);
+        std::print("\n\n");
+    }
+    catch (const MuMiniZinc::BadVersion& bad_version)
+    {
+        throw MuMiniZinc::BadVersion { std::format("{:s}\n\nTo disable the compiler version check, use the option `{:s}{:s}{:s}`. The expected version number is {:s}.", bad_version.what(), logging::code(logging::Color::Blue), option_ignore_version_check.name, logging::code(logging::Style::Reset), MuMiniZinc::get_version()) };
+    }
+    catch (const MuMiniZinc::OutdatedMutant& outdated_mutant)
+    {
+        throw MuMiniZinc::OutdatedMutant { std::format("{:s}\n\nTo disable the outdated mutant check, use the option `{:s}{:s}{:s}`.", outdated_mutant.what(), logging::code(logging::Color::Blue), option_ignore_model_timestamp.name, logging::code(logging::Style::Reset)) };
+    }
 
-        try
+    for (const auto& entry : entries.mutants())
+    {
+        if (entry.results.empty())
+            continue;
+
+        std::format_to(output_stream, "{:<{}}   ", entry.name, entries.mutants().back().name.size());
+
+        auto status = MuMiniZinc::Entry::Status::Dead;
+
+        for (const auto value : entry.results)
         {
-            model.run_mutants(executable, remaining_args, data_files, std::chrono::seconds { timeout_seconds }, n_jobs, mutants, check_compiler_version, check_model_last_modified_time);
+            std::format_to(output_stream, "{:d} ", std::to_underlying(value));
+
+            if (status == MuMiniZinc::Entry::Status::Dead)
+                status = value;
         }
-        catch (const BadVersion& bad_version)
+
+        switch (status)
         {
-            throw BadVersion { std::format("{:s}\n\nTo disable the compiler version check, use the option `{:s}{:s}{:s}`. The expected version number is {:s}.", bad_version.what(), logging::code(logging::Color::Blue), option_ignore_version_check.name, logging::code(logging::Style::Reset), MutationModel::get_version()) };
+        case MuMiniZinc::Entry::Status::Alive:
+            ++n_alive;
+            break;
+        case MuMiniZinc::Entry::Status::Dead:
+            ++n_dead;
+            break;
+        case MuMiniZinc::Entry::Status::Invalid:
+            ++n_invalid;
+            break;
         }
-        catch (const MutationModel::OutdatedMutant& outdated_mutant)
-        {
-            throw MutationModel::OutdatedMutant { std::format("{:s}\n\nTo disable the outdated mutant check, use the option `{:s}{:s}{:s}`.", outdated_mutant.what(), logging::code(logging::Color::Blue), option_ignore_model_timestamp.name, logging::code(logging::Style::Reset)) };
-        }
 
-        const auto entries = model.get_entries();
-
-        for (const auto& entry : model.get_entries() | std::views::drop(1))
-        {
-            if (entry.results.empty())
-                continue;
-
-            std::format_to(output_stream, "{:<{}}   ", entry.name, entries.back().name.size());
-
-            auto status = MutationModel::Entry::Status::Dead;
-
-            for (const auto value : entry.results)
-            {
-                std::format_to(output_stream, "{:d} ", std::to_underlying(value));
-
-                if (status == MutationModel::Entry::Status::Dead)
-                    status = value;
-            }
-
-            switch (status)
-            {
-            case MutationModel::Entry::Status::Alive:
-                ++n_alive;
-                break;
-            case MutationModel::Entry::Status::Dead:
-                ++n_dead;
-                break;
-            case MutationModel::Entry::Status::Invalid:
-                ++n_invalid;
-                break;
-            }
-
-            std::format_to(output_stream, "\n");
-        }
+        std::format_to(output_stream, "\n");
     }
 
     if (!output_file.has_value())
@@ -831,14 +926,34 @@ int normalise(std::span<const std::string_view> arguments)
     if (model_path.empty())
         throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
 
-    MutationModel mutation_model { model_path };
+    std::variant<MuMiniZinc::find_mutants_args::ModelDetails, std::reference_wrapper<const std::filesystem::path>> variant;
 
-    mutation_model.find_mutants(include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(), MutationModel::RunType::NoDetection);
+    std::filesystem::path model_path_str;
 
-    const auto entries = mutation_model.get_entries();
+    if (model_path == "-"sv)
+    {
+        std::ostringstream ostringstream;
+        ostringstream << std::cin.rdbuf();
 
-    if (!entries.empty())
-        std::print("{:s}", entries.front().contents);
+        variant.emplace<0>("stdin", std::move(ostringstream).str());
+    }
+    else
+    {
+        model_path_str = model_path;
+        variant.emplace<1>(model_path_str);
+    }
+
+    const MuMiniZinc::find_mutants_args parameters {
+        .model = variant,
+        .allowed_operators = {},
+        .log_output = {},
+        .include_path = include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(),
+        .run_type = MuMiniZinc::find_mutants_args::RunType::NoDetection
+    };
+
+    const auto result { MuMiniZinc::find_mutants(parameters) };
+
+    std::print("{:s}", result.normalized_model());
 
     return EXIT_SUCCESS;
 }
@@ -869,18 +984,18 @@ int clean(std::span<const std::string_view> arguments)
     if (model_path.empty())
         throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
 
-    MutationModel model { model_path, output_directory, {}, std::cout };
+    const auto calculated_output_directory = output_directory.empty() ? MuMiniZinc::get_path_from_model_path(model_path) : std::filesystem::path { output_directory };
 
-    model.clear_output_folder();
+    MuMiniZinc::clear_mutant_output_folder(model_path, calculated_output_directory);
 
     return EXIT_SUCCESS;
 }
 
 int print_version()
 {
-    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}", config::project_fancy_name, config::project_version, MutationModel::get_version());
+    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}", MuMiniZinc::config::project_fancy_name, MuMiniZinc::config::project_version, MuMiniZinc::get_version());
 
-    if constexpr (config::is_debug_build)
+    if constexpr (MuMiniZinc::config::is_debug_build)
         std::println("\nDebug build.");
 
     return EXIT_SUCCESS;

@@ -10,19 +10,23 @@
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
 #include <logging.hpp>                 // logging::output
-#include <mutation.hpp>                // MutationModel::Entry
 
-struct configuration
+namespace MuMiniZinc
 {
-    const std::filesystem::path& path;
+
+class EntryResult;
+
+struct execution_args
+{
+    const std::filesystem::path& compiler_path;
     std::span<const std::string_view> compiler_arguments;
     std::span<const std::string> data_files;
-    std::span<MutationModel::Entry> models;
+    EntryResult& entry_result;
     std::chrono::seconds timeout;
     std::uint64_t n_jobs;
-    std::span<const ascii_ci_string_view> mutants;
+    std::span<const ascii_ci_string_view> allowed_mutants;
     bool check_compiler_version;
-    logging::output logging_output;
+    logging::output output_log;
 };
 
 class BadVersion : public std::runtime_error
@@ -40,6 +44,8 @@ class ExecutionError : public std::runtime_error
     using std::runtime_error::runtime_error;
 };
 
-void execute_mutants(const configuration& configuration);
+void execute_mutants(const execution_args& parameters);
+
+}
 
 #endif
