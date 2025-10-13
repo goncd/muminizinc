@@ -1,6 +1,3 @@
-#include "case_insensitive_string.hpp"
-#include "executor.hpp"
-#include <boost/process/v2/environment.hpp>
 #define BOOST_TEST_MODULE test_mutation_model
 #include <boost/test/unit_test.hpp> // BOOST_AUTO_TEST_CASE
 
@@ -10,6 +7,9 @@
 #include <format>     // std::format
 #include <fstream>    // std::ofstream
 
+#include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
+
+#include <executor.hpp> // MuMiniZinc::UnknownMutant
 #include <mutation.hpp>
 
 BOOST_AUTO_TEST_CASE(empty_model)

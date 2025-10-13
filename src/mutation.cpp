@@ -1,6 +1,6 @@
 #include <mutation.hpp>
 
-#include <algorithm>    // std::ranges::contains, std::ranges::equal, std::ranges::next_permutation
+#include <algorithm>    // std::ranges::contains, std::ranges::find_if
 #include <array>        // std::array
 #include <cstddef>      // std::size_t
 #include <cstdint>      // std::uint64_t
@@ -9,6 +9,7 @@
 #include <fstream>      // std::ifstream
 #include <functional>   // std::reference_wrapper
 #include <iostream>     // std::cerr
+#include <iterator>     // std::distance
 #include <optional>     // std::optional
 #include <span>         // std::span
 #include <sstream>      // std::ostringstream
@@ -18,9 +19,10 @@
 #include <system_error> // std::error_code
 #include <type_traits>  // std::decay_t
 #include <utility>      // std::move, std::pair
+#include <variant>      // std::visit
 #include <vector>       // std::vector
 
-#include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::BinOpType, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
+#include <minizinc/ast.hh>           // MiniZinc::BinOp, MiniZinc::ConstraintI, MiniZinc::EVisitor, MiniZinc::Expression, MiniZinc::OutputI, MiniZinc::SolveI
 #include <minizinc/astiterator.hh>   // MiniZinc::top_down
 #include <minizinc/aststring.hh>     // MiniZinc::ASTString
 #include <minizinc/file_utils.hh>    // MiniZinc::FileUtils::share_directory
@@ -153,7 +155,10 @@ constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::str
 namespace MuMiniZinc
 {
 
-void EntryResult::save_model(const MiniZinc::Model* model, std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums)
+EntryResult::EntryResult() :
+    m_statistics(MuMiniZinc::get_available_operators().size()) { }
+
+void EntryResult::save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums)
 {
     if (model == nullptr)
         throw std::runtime_error { "There is no model to print." };
@@ -166,7 +171,19 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view muta
 
     fix_enums(detected_enums, output);
 
-    const auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_model_name, SEPARATOR, mutant_name, SEPARATOR, mutant_id, SEPARATOR, occurrence_id);
+    const auto operator_list = MuMiniZinc::get_available_operators();
+
+    const auto it = std::ranges::find_if(operator_list, [operator_name](const auto& element)
+        { return element.first == operator_name; });
+
+    if (it == operator_list.end())
+        throw UnknownOperator { "Unknown operator found while trying to save the model." };
+
+    const auto operator_id = static_cast<std::size_t>(std::distance(operator_list.begin(), it));
+
+    m_statistics[operator_id].second = std::max(m_statistics[operator_id].second, occurrence_id);
+
+    const auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_model_name, SEPARATOR, operator_name, SEPARATOR, m_statistics[operator_id].first++, SEPARATOR, occurrence_id);
 
     m_mutants.emplace_back(mutant, std::move(output));
 }
@@ -336,7 +353,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view muta
         if (str.empty())
             throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), entry.path().native(), code(logging::Style::Reset)) };
 
-        entry_result.m_mutants.emplace_back(*std::move(stem), std::move(str));
+        entry_result.m_mutants.emplace_back(*stem, std::move(str));
     }
 
     return entry_result;

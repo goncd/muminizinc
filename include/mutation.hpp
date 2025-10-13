@@ -2,6 +2,7 @@
 #define MUTATION_HPP
 
 #include <filesystem>  // std::filesystem::path
+#include <functional>  // std::reference_wrapper
 #include <span>        // std::span
 #include <string>      // std::string
 #include <string_view> // std::string_view
@@ -75,6 +76,7 @@ struct Entry
 class EntryResult
 {
     std::vector<Entry> m_mutants;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> m_statistics;
 
     std::string m_model_name;
     std::string m_model_contents;
@@ -84,13 +86,16 @@ class EntryResult
     friend void execute_mutants(const MuMiniZinc::execution_args& parameters);
     friend class Mutator;
 
-    void save_model(const MiniZinc::Model* model, std::string_view mutant_name, std::uint64_t mutant_id, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums);
+    void save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums);
 
 public:
+    EntryResult();
+
     [[nodiscard]] constexpr std::span<const Entry> mutants() const noexcept { return m_mutants; }
 
     [[nodiscard]] constexpr std::string_view model_name() const noexcept { return m_model_name; }
     [[nodiscard]] constexpr std::string_view normalized_model() const noexcept { return m_model_contents; }
+    [[nodiscard]] constexpr std::span<const std::pair<std::uint64_t, std::uint64_t>> statistics() const noexcept { return m_statistics; }
 };
 
 struct find_mutants_args

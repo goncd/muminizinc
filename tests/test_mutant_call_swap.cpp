@@ -4,6 +4,8 @@
 
 #include <algorithm>   // std::ranges::any_of
 #include <array>       // std::array
+#include <filesystem>  // std::filesystem::path
+#include <format>      // std::format
 #include <ranges>      //std::views::enumerate
 #include <string_view> // std::string_view
 

@@ -1,4 +1,3 @@
-
 #include <arguments.hpp>
 
 #include <algorithm>    // std::ranges::find_if
@@ -9,16 +8,19 @@
 #include <filesystem>   // std::filesystem::exists, std::filesystem::path
 #include <format>       // std::format
 #include <fstream>      // std::ofstream
+#include <functional>   // std::reference_wrapper
 #include <iostream>     // std::cout
 #include <iterator>     // std::ostreambuf_iterator
 #include <optional>     // std::optional
 #include <print>        // std::println
-#include <ranges>       // std::views::filter, std::views::split
+#include <ranges>       // std::views::enumerate, std::views::filter, std::views::split
 #include <span>         // std::span
+#include <sstream>      // std::ostringstream
 #include <string>       // std::string
 #include <string_view>  // std::string_view
 #include <system_error> // std::errc
 #include <utility>      // std::to_underlying
+#include <variant>      // std::variant
 #include <vector>       // std::vector
 
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
@@ -330,6 +332,23 @@ constexpr std::array commands {
     command_color_option
 };
 
+void print_statistics(const MuMiniZinc::EntryResult& entries)
+{
+    std::println("{:s}{:s}Detected mutants{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
+
+    for (const auto& entry : entries.mutants())
+    {
+        std::println("  {:s}", entry.name);
+    }
+
+    std::print("{0:s}Total{1:s}: {2:s}{3:d}{1:s} mutants.\n\n", logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), entries.mutants().size());
+
+    const auto operators = MuMiniZinc::get_available_operators();
+    std::println("{:s}{:s}Operator statistics{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
+    for (auto [n, stats] : entries.statistics() | std::views::enumerate)
+        std::println("- {2:s}\n    - Amount:     {0:s}{3:d}{1:s}\n    - Occurences: {0:s}{4:d}{1:s}", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), operators[static_cast<std::size_t>(n)].first, stats.first, stats.second);
+}
+
 template<typename Exception>
 void throw_operator_option_error(std::string_view message)
 {
@@ -489,6 +508,8 @@ int applyall(std::span<const std::string_view> arguments)
             const auto calculated_output_directory = output_directory.empty() ? MuMiniZinc::get_path_from_model_path(model_path) : std::filesystem::path { output_directory };
             MuMiniZinc::dump_mutants(entries, calculated_output_directory);
 
+            print_statistics(entries);
+
             std::println("Saved {0:s}{2:d}{1:s} mutants to `{0:s}{3:s}{1:s}`.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size(), calculated_output_directory.native());
         }
     }
@@ -570,7 +591,7 @@ int analyse(std::span<const std::string_view> arguments)
         if (entries.mutants().empty())
             std::println("Couldn't detect any mutants.");
         else
-            std::println("Detected {0:s}{2:d}{1:s} mutants.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size());
+            print_statistics(entries);
     }
     catch (const MuMiniZinc::UnknownOperator& unknown_operator)
     {
@@ -863,7 +884,7 @@ int run(std::span<const std::string_view> arguments)
         if (entry.results.empty())
             continue;
 
-        std::format_to(output_stream, "{:<{}}   ", entry.name, entries.mutants().back().name.size());
+        std::format_to(output_stream, "{:<{}}   ", entry.name, entries.model_name().size() + 10);
 
         auto status = MuMiniZinc::Entry::Status::Dead;
 
