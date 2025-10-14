@@ -367,7 +367,7 @@ void dump_mutants(const EntryResult& entries, const std::filesystem::path& direc
         std::error_code error_code;
 
         if (!std::filesystem::create_directory(directory, error_code) || error_code)
-            throw MuMiniZinc::IOError { std::format("Couldn't create the directory `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
+            throw MuMiniZinc::IOError { std::format("Could not create the directory `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
     }
 
     if (!std::filesystem::is_empty(directory))

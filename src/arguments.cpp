@@ -13,7 +13,7 @@
 #include <iterator>     // std::ostreambuf_iterator
 #include <optional>     // std::optional
 #include <print>        // std::println
-#include <ranges>       // std::views::enumerate, std::views::filter, std::views::split
+#include <ranges>       // std::views::enumerate, std::views::filter, std::views::split, std::ranges::to, std::views::transform
 #include <span>         // std::span
 #include <sstream>      // std::ostringstream
 #include <string>       // std::string
@@ -24,6 +24,8 @@
 #include <vector>       // std::vector
 
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
+
+#include <nlohmann/json.hpp> // nlohmann::json
 
 #include <build/config.hpp>            // config::project_version
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
@@ -156,6 +158,12 @@ constexpr Option option_mutant {
     .help = "Only run the specified mutant, or a comma-separated list of them"
 };
 
+constexpr Option option_json {
+    .name = "--json",
+    .short_name = {},
+    .help = "When success, output will be in JSON format"
+};
+
 constexpr Option option_ignore_version_check {
     .name = "--ignore-version-check",
     .short_name = {},
@@ -172,7 +180,8 @@ constexpr std::array analyse_parameters {
     option_help,
     option_color,
     option_operator,
-    option_include
+    option_include,
+    option_json
 };
 
 constexpr std::array applyall_parameters {
@@ -180,6 +189,7 @@ constexpr std::array applyall_parameters {
     option_help,
     option_color,
     option_operator,
+    option_json,
     option_include
 };
 
@@ -196,6 +206,7 @@ constexpr std::array run_parameters {
     option_output,
     option_include,
     option_mutant,
+    option_json,
     option_ignore_version_check,
     option_ignore_model_timestamp,
 };
@@ -332,14 +343,44 @@ constexpr std::array commands {
     command_color_option
 };
 
+nlohmann::json get_statistics_json(const MuMiniZinc::EntryResult& entries)
+{
+    if (entries.mutants().empty())
+        return nlohmann::json::object();
+
+    const auto names_view = entries.mutants()
+        | std::views::transform([](const auto& mutant)
+            { return mutant.name; });
+
+    const auto stats_view = entries.statistics()
+        | std::views::enumerate
+        | std::views::transform([](const auto& item)
+            {
+                          auto [index, stats_pair] = item;
+                          return nlohmann::json{
+                              {"name", MuMiniZinc::available_operators[static_cast<std::size_t>(index)].first},
+                              {"amount", stats_pair.first},
+                              {"occurences", stats_pair.second}
+                          }; });
+
+    return nlohmann::json {
+        { "detected_mutants", names_view | std::ranges::to<std::vector>() },
+        { "operator_statistics", stats_view | std::ranges::to<std::vector>() }
+    };
+};
+
 void print_statistics(const MuMiniZinc::EntryResult& entries)
 {
+    if (entries.mutants().empty())
+    {
+        std::println("Could not detect any mutants");
+        return;
+    }
+
     std::println("{:s}{:s}Detected mutants{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
 
     for (const auto& entry : entries.mutants())
-    {
         std::println("  {:s}", entry.name);
-    }
 
     std::print("{0:s}Total{1:s}: {2:s}{3:d}{1:s} mutants.\n\n", logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), entries.mutants().size());
 
@@ -443,10 +484,13 @@ int applyall(std::span<const std::string_view> arguments)
     std::string_view output_directory;
     std::string_view include_path;
     std::vector<ascii_ci_string_view> allowed_operators;
+    bool is_json { false };
 
     for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_include)
+        if (arguments[i] == option_json)
+            is_json = true;
+        else if (arguments[i] == option_include)
         {
             if (i + 1 >= arguments.size())
                 throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_include.name) };
@@ -491,7 +535,6 @@ int applyall(std::span<const std::string_view> arguments)
         const MuMiniZinc::find_mutants_args parameters {
             .model = model_path_str,
             .allowed_operators = allowed_operators,
-            .log_output = {},
             .include_path = include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(),
             .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
         };
@@ -499,17 +542,35 @@ int applyall(std::span<const std::string_view> arguments)
         const auto entries { MuMiniZinc::find_mutants(parameters) };
 
         if (entries.mutants().empty())
-            std::println("Couldn't detect any mutants.");
+        {
+            if (is_json)
+                std::println("{}", get_statistics_json(entries).dump());
+            else
+                print_statistics(entries);
+        }
         else
         {
             const auto calculated_output_directory = output_directory.empty() ? MuMiniZinc::get_path_from_model_path(model_path) : std::filesystem::path { output_directory };
             MuMiniZinc::dump_mutants(entries, calculated_output_directory);
 
-            print_statistics(entries);
+            if (is_json)
+            {
+                auto json = get_statistics_json(entries);
 
-            std::println("Saved {0:s}{2:d}{1:s} mutants to `{0:s}{3:s}{1:s}`.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size(), calculated_output_directory.native());
+                json.emplace("saved_mutants", entries.mutants().size());
+                json.emplace("saved_mutants_directory", calculated_output_directory.native());
+
+                std::println("{:s}", json.dump());
+            }
+            else
+            {
+                print_statistics(entries);
+
+                std::println("\nSaved {0:s}{2:d}{1:s} mutants to `{0:s}{3:s}{1:s}`.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size(), calculated_output_directory.native());
+            }
         }
     }
+
     catch (const MuMiniZinc::UnknownOperator& unknown_operator)
     {
         throw_operator_option_error<MuMiniZinc::UnknownOperator>(std::format("{:s}: {:s}", arguments.front(), unknown_operator.what()));
@@ -523,10 +584,13 @@ int analyse(std::span<const std::string_view> arguments)
     std::string_view model_path;
     std::string_view include_path;
     std::vector<ascii_ci_string_view> allowed_operators;
+    bool is_json { false };
 
     for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_include)
+        if (arguments[i] == option_json)
+            is_json = true;
+        else if (arguments[i] == option_include)
         {
             if (i + 1 >= arguments.size())
                 throw BadArgument { std::format("{:s}: {:s}: Missing parameter.", arguments.front(), option_include.name) };
@@ -578,15 +642,14 @@ int analyse(std::span<const std::string_view> arguments)
         const MuMiniZinc::find_mutants_args parameters {
             .model = variant,
             .allowed_operators = allowed_operators,
-            .log_output = logging::output { std::cout },
             .include_path = include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(),
             .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
         };
 
         const auto entries { MuMiniZinc::find_mutants(parameters) };
 
-        if (entries.mutants().empty())
-            std::println("Couldn't detect any mutants.");
+        if (is_json)
+            std::println("{:s}", get_statistics_json(entries).dump());
         else
             print_statistics(entries);
     }
@@ -613,13 +676,16 @@ int run(std::span<const std::string_view> arguments)
     std::vector<ascii_ci_string_view> allowed_mutants;
     bool check_compiler_version { true };
     bool check_model_last_modified_time { true };
+    bool is_json { false };
 
     std::uint64_t timeout_seconds { DEFAULT_TIMEOUT_S };
 #undef DEFAULT_TIMEOUT_S
 
     for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
-        if (arguments[i] == option_ignore_model_timestamp)
+        if (arguments[i] == option_json)
+            is_json = true;
+        else if (arguments[i] == option_ignore_model_timestamp)
         {
             if (in_memory)
                 throw BadArgument { std::format("{:s}: {:s}: Argument not compatible with `{:s}{:s}{:s}`.", arguments.front(), option_ignore_model_timestamp.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
@@ -816,7 +882,6 @@ int run(std::span<const std::string_view> arguments)
             const MuMiniZinc::find_mutants_args parameters {
                 .model = variant,
                 .allowed_operators { allowed_operators },
-                .log_output { std::cout },
                 .include_path { include_path },
                 .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
             };
@@ -844,7 +909,7 @@ int run(std::span<const std::string_view> arguments)
     }
 
     if (entries.mutants().empty())
-        throw std::runtime_error { std::format("{:s}: Couldn't find any mutants to run.", arguments.front()) };
+        throw std::runtime_error { std::format("{:s}: Could not find any mutants to run.", arguments.front()) };
 
     const MuMiniZinc::run_mutants_args parameters {
         .entry_result = entries,
@@ -855,17 +920,21 @@ int run(std::span<const std::string_view> arguments)
         .timeout { timeout_seconds },
         .n_jobs = n_jobs,
         .check_compiler_version = check_compiler_version,
-        .output_log { std::cout }
+        .output_log = is_json ? logging::output {} : logging::output { std::cout }
     };
 
-    std::size_t n_invalid {}, n_alive {}, n_dead {};
+    std::size_t n_invalid {};
+    std::size_t n_alive {};
+    std::size_t n_dead {};
 
     const std::ostreambuf_iterator<char> output_stream { output_file.has_value() ? *output_file : std::cout };
 
     try
     {
         MuMiniZinc::run_mutants(parameters);
-        std::print("\n\n");
+
+        if (!is_json)
+            std::print("\n\n");
     }
     catch (const MuMiniZinc::BadVersion& bad_version)
     {
@@ -876,22 +945,36 @@ int run(std::span<const std::string_view> arguments)
         throw MuMiniZinc::OutdatedMutant { std::format("{:s}\n\nTo disable the outdated mutant check, use the option `{:s}{:s}{:s}`.", outdated_mutant.what(), logging::code(logging::Color::Blue), option_ignore_model_timestamp.name, logging::code(logging::Style::Reset)) };
     }
 
+    auto entries_array = nlohmann::json::array();
+
     for (const auto& entry : entries.mutants())
     {
         if (entry.results.empty())
             continue;
 
-        std::format_to(output_stream, "{:<{}}   ", entry.name, entries.model_name().size() + 10);
+        if (!is_json || (is_json && output_file.has_value()))
+            std::format_to(output_stream, "{:<{}}   ", entry.name, entries.model_name().size() + 10);
 
         auto status = MuMiniZinc::Entry::Status::Dead;
 
+        auto json_results = nlohmann::json::array();
         for (const auto value : entry.results)
         {
-            std::format_to(output_stream, "{:d} ", std::to_underlying(value));
+            const auto value_underlying = std::to_underlying(value);
+
+            if (!is_json || (is_json && output_file.has_value()))
+                std::format_to(output_stream, "{:d} ", value_underlying);
+
+            if (is_json)
+                json_results.emplace_back(value_underlying);
 
             if (status == MuMiniZinc::Entry::Status::Dead)
                 status = value;
         }
+
+        if (is_json)
+            entries_array.emplace_back(nlohmann::json::object({ { "mutant", entry.name },
+                { "results", std::move(json_results) } }));
 
         switch (status)
         {
@@ -906,13 +989,24 @@ int run(std::span<const std::string_view> arguments)
             break;
         }
 
-        std::format_to(output_stream, "\n");
+        if (!is_json || (is_json && output_file.has_value()))
+            std::format_to(output_stream, "\n");
     }
 
-    if (!output_file.has_value())
+    if (!is_json && !output_file.has_value())
         std::println();
 
-    std::println("{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
+    if (is_json)
+    {
+        const nlohmann::json json {
+            { "results", std::move(entries_array) },
+            { "summary", { { "invalid", n_invalid }, { "alive", n_alive }, { "dead", n_dead } } }
+        };
+
+        std::println("{}", json.dump());
+    }
+    else
+        std::println("{2:s}{3:s}Summary:{0:s}\n  Invalid:  {1:s}{4:d}{0:s}\n  Alive:    {1:s}{5:d}{0:s}\n  Dead:     {1:s}{6:d}{0:s}", logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), n_invalid, n_alive, n_dead);
 
     return EXIT_SUCCESS;
 }
@@ -964,7 +1058,6 @@ int normalise(std::span<const std::string_view> arguments)
     const MuMiniZinc::find_mutants_args parameters {
         .model = variant,
         .allowed_operators = {},
-        .log_output = {},
         .include_path = include_path.empty() ? std::string {} : std::filesystem::canonical(include_path).string(),
         .run_type = MuMiniZinc::find_mutants_args::RunType::NoDetection
     };

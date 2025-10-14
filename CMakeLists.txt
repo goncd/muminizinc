@@ -89,6 +89,10 @@ target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PACKAGE_INCLUDE_DIRS}
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Boost::process)
 
+# JSON
+find_package(nlohmann_json 3.12.0 REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+
 # Testing framework
 include(CTest)
 add_subdirectory(tests)

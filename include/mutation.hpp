@@ -106,8 +106,6 @@ struct find_mutants_args
 
     std::span<const ascii_ci_string_view> allowed_operators;
 
-    logging::output log_output;
-
     std::string include_path;
 
     enum class RunType : std::uint8_t

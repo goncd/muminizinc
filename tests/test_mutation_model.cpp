@@ -17,7 +17,6 @@ BOOST_AUTO_TEST_CASE(empty_model)
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = {},
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };
@@ -39,7 +38,6 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = {},
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };
@@ -89,7 +87,6 @@ BOOST_AUTO_TEST_CASE(invalid_file)
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = {},
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };
@@ -126,7 +123,6 @@ BOOST_AUTO_TEST_CASE(no_mutants_detected)
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = {},
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };
@@ -150,7 +146,6 @@ BOOST_AUTO_TEST_CASE(outdated_mutant)
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = {},
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };
@@ -189,7 +184,6 @@ BOOST_AUTO_TEST_CASE(unknown_operator)
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = unknown_operators,
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };
@@ -205,7 +199,6 @@ BOOST_AUTO_TEST_CASE(unknown_mutant)
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = {},
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };

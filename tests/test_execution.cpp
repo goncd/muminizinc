@@ -33,7 +33,6 @@ void perform_test(const std::filesystem::path& path, std::span<const ascii_ci_st
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = path,
         .allowed_operators = allowed_operators,
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };

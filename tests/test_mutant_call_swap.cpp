@@ -35,7 +35,6 @@ constraint forall ( x in arr2 ) ( x > 3 );
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
         .allowed_operators = allowed_operators,
-        .log_output = {},
         .include_path = {},
         .run_type = MuMiniZinc::find_mutants_args::RunType::FullRun
     };
