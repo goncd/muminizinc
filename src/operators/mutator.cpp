@@ -6,20 +6,19 @@
 #include <format>      // std::format
 #include <span>        // std::span
 #include <string_view> // std::string_view
-#include <utility>     // std::pair
 #include <vector>      // std::vector
 
-#include <minizinc/ast.hh>           // MiniZinc::BinOpType, MiniZinc::Expression
+#include <minizinc/ast.hh> // MiniZinc::BinOpType, MiniZinc::Expression
 
 #include <build/config.hpp>            // MuMiniZinc::config::is_debug_build
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
 #include <logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
+#include <mutation.hpp>                // MuMiniZinc::EntryResult
 
 namespace
 {
 
-using namespace std::string_view_literals;
-
+constexpr auto relational_operators_name { MuMiniZinc::available_operators[0].first };
 constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_LE,
     MiniZinc::BinOpType::BOT_LQ,
@@ -29,8 +28,7 @@ constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_NQ,
 };
 
-constexpr auto relational_operators_name { "REL"sv };
-
+constexpr auto arithmetic_operators_name { MuMiniZinc::available_operators[1].first };
 constexpr std::array arithmetic_operators {
     MiniZinc::BinOpType::BOT_PLUS,
     MiniZinc::BinOpType::BOT_MINUS,
@@ -41,45 +39,28 @@ constexpr std::array arithmetic_operators {
     MiniZinc::BinOpType::BOT_POW,
 };
 
-constexpr auto arithmetic_operators_name { "ART"sv };
+constexpr auto unary_operators_name { MuMiniZinc::available_operators[2].first };
 
-constexpr auto unary_operators_name { "UNA"sv };
-
+constexpr auto call_name { MuMiniZinc::available_operators[3].first };
 const std::array calls {
     MiniZinc::Constants::constants().ids.forall,
     MiniZinc::Constants::constants().ids.exists,
 };
 
-constexpr auto call_name { "CALL"sv };
-constexpr auto call_swap_name { "SWP"sv };
-
-constexpr std::array mutant_help {
-    std::pair { relational_operators_name, "Relational operators"sv },
-    std::pair { arithmetic_operators_name, "Arithmetic operators"sv },
-    std::pair { unary_operators_name, "Unary operators removal"sv },
-    std::pair { call_name, "Function calls"sv },
-    std::pair { call_swap_name, "Function call argument swap"sv }
-};
+constexpr auto call_swap_name { MuMiniZinc::available_operators[4].first };
 
 };
 
 namespace MuMiniZinc
 {
 
-[[nodiscard]] std::span<const std::pair<std::string_view, std::string_view>> get_available_operators()
-{
-    return mutant_help;
-}
-
 void throw_if_invalid_operators(std::span<const ascii_ci_string_view> allowed_operators)
 {
-    const auto valid_operators { MuMiniZinc::get_available_operators() };
-
     for (const auto mutant : allowed_operators)
     {
         bool found = false;
 
-        for (const auto& [name, _] : valid_operators)
+        for (const auto [name, _] : available_operators)
         {
             if (mutant == name)
             {
@@ -115,7 +96,7 @@ void Mutator::vBinOp(MiniZinc::BinOp* binOp)
     }
 
     if (operators.empty())
-        logd("MutationModel::Mutator::vBinOp: Undetected mutation type");
+        logd("vBinOp: Undetected mutation type");
     else if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { operator_name }))
         perform_mutation(binOp, operators, operator_name);
 }
@@ -133,7 +114,7 @@ void Mutator::vCall(MiniZinc::Call* call)
     if (std::ranges::contains(calls, call->id()) && (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { call_name })))
         perform_mutation(call, calls, call_name);
     else
-        logd("MutationModel::Mutator::vCall: Unhandled call operation");
+        logd("vCall: Unhandled call operation");
 }
 
 void Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name)

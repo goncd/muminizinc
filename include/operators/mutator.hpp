@@ -1,18 +1,34 @@
 #ifndef OPERATOR_MUTATOR_HPP
 #define OPERATOR_MUTATOR_HPP
 
-#include <span>    // std::span
-#include <utility> // std::pair
+#include <array>       // std::array
+#include <span>        // std::span
+#include <string_view> // std::string_view
+#include <utility>     // std::pair
 
 #include <minizinc/ast.hh> // MiniZinc::EVisitor
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <mutation.hpp>
 
 namespace MuMiniZinc
 {
 
-[[nodiscard]] std::span<const std::pair<std::string_view, std::string_view>> get_available_operators();
+class EntryResult;
+
+using namespace std::string_view_literals;
+
+inline constexpr std::array available_operators {
+    std::pair { "REL"sv, "Replaces a relational operator with another of the same type"sv },
+    std::pair { "ART"sv, "Replaces an arithmetic operator with another of the same type"sv },
+    std::pair { "UNA"sv, "Removes unary operators"sv },
+    std::pair { "CALL"sv, "Replace calls to some functions with some others"sv },
+    std::pair { "SWP"sv, "Swaps function call arguments"sv }
+};
+
+class UnknownOperator : public std::runtime_error
+{
+    using std::runtime_error::runtime_error;
+};
 
 void throw_if_invalid_operators(std::span<const ascii_ci_string_view> allowed_operators);
 

@@ -1,16 +1,15 @@
 #define BOOST_TEST_MODULE test_mutant_call_swap
-
 #include <boost/test/unit_test.hpp>
 
 #include <algorithm>   // std::ranges::any_of
 #include <array>       // std::array
 #include <filesystem>  // std::filesystem::path
 #include <format>      // std::format
-#include <ranges>      //std::views::enumerate
+#include <ranges>      // std::views::enumerate
 #include <string_view> // std::string_view
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <mutation.hpp>                // MutationModel
+#include <mutation.hpp>                // MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args
 
 BOOST_AUTO_TEST_CASE(call_swap)
 {

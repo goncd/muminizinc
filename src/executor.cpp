@@ -29,7 +29,7 @@
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
 #include <logging.hpp>                 // logging::code, logging::Style, logging::output
-#include <mutation.hpp>                // MutationModel::Entry
+#include <mutation.hpp>                // MuMiniZinc::Entry
 
 namespace
 {

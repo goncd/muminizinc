@@ -1,5 +1,5 @@
 #define BOOST_TEST_MODULE test_mutation_model
-#include <boost/test/unit_test.hpp> // BOOST_AUTO_TEST_CASE
+#include <boost/test/unit_test.hpp>
 
 #include <array>      // std::array
 #include <chrono>     // std::chrono::hours
@@ -7,10 +7,8 @@
 #include <format>     // std::format
 #include <fstream>    // std::ofstream
 
-#include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
-
 #include <executor.hpp> // MuMiniZinc::UnknownMutant
-#include <mutation.hpp>
+#include <mutation.hpp> // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::retrieve_mutants, MuMiniZinc::retrieve_mutants_args, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
 
 BOOST_AUTO_TEST_CASE(empty_model)
 {
@@ -214,12 +212,11 @@ BOOST_AUTO_TEST_CASE(unknown_mutant)
 
     auto entries = MuMiniZinc::find_mutants(find_parameters);
 
-    const auto compiler_path = boost::process::environment::find_executable("minizinc");
-    BOOST_REQUIRE(!compiler_path.empty());
+    const std::filesystem::path fake_compiler { "fake_compiler" };
 
     const MuMiniZinc::run_mutants_args run_parameters {
         .entry_result = entries,
-        .compiler_path = compiler_path,
+        .compiler_path = fake_compiler,
         .compiler_arguments = {},
         .allowed_mutants = unknown_mutant,
         .data_files = {},

@@ -1,6 +1,7 @@
 #ifndef MUTATION_HPP
 #define MUTATION_HPP
 
+#include <array>       // std::array
 #include <filesystem>  // std::filesystem::path
 #include <functional>  // std::reference_wrapper
 #include <span>        // std::span
@@ -19,6 +20,7 @@
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
 #include <executor.hpp>                //
 #include <logging.hpp>                 // logging::output
+#include <operators/mutator.hpp>       // MuMiniZinc::available_operators
 
 namespace MuMiniZinc
 {
@@ -40,11 +42,6 @@ class EmptyFile : public IOError
 class InvalidFile : public IOError
 {
     using IOError::IOError;
-};
-
-class UnknownOperator : public std::runtime_error
-{
-    using std::runtime_error::runtime_error;
 };
 
 class EntryResult;
@@ -76,7 +73,7 @@ struct Entry
 class EntryResult
 {
     std::vector<Entry> m_mutants;
-    std::vector<std::pair<std::uint64_t, std::uint64_t>> m_statistics;
+    std::array<std::pair<std::uint64_t, std::uint64_t>, available_operators.size()> m_statistics;
 
     std::string m_model_name;
     std::string m_model_contents;
@@ -89,10 +86,8 @@ class EntryResult
     void save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums);
 
 public:
-    EntryResult();
 
     [[nodiscard]] constexpr std::span<const Entry> mutants() const noexcept { return m_mutants; }
-
     [[nodiscard]] constexpr std::string_view model_name() const noexcept { return m_model_name; }
     [[nodiscard]] constexpr std::string_view normalized_model() const noexcept { return m_model_contents; }
     [[nodiscard]] constexpr std::span<const std::pair<std::uint64_t, std::uint64_t>> statistics() const noexcept { return m_statistics; }
@@ -167,8 +162,8 @@ void run_mutants(const run_mutants_args& parameters);
 
 void clear_mutant_output_folder(const std::filesystem::path& model_path, const std::filesystem::path& output_directory);
 
-constexpr std::string_view get_version() noexcept { return MZN_VERSION; }
-constexpr std::string_view get_version_full() noexcept { return MZN_VERSION_FULL; }
+[[nodiscard]] constexpr std::string_view get_version() noexcept { return MZN_VERSION; }
+[[nodiscard]] constexpr std::string_view get_version_full() noexcept { return MZN_VERSION_FULL; }
 
 }
 

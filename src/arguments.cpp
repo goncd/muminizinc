@@ -29,8 +29,8 @@
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
 #include <executor.hpp>                // BadVersion
 #include <logging.hpp>                 // logging::code, logging::Color, logging::Style
-#include <mutation.hpp>                // MutationModel
-#include <operators/mutator.hpp>       // Mutator::get_available_operators
+#include <mutation.hpp>                // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::EntryResult, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::get_path_from_model_path, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
+#include <operators/mutator.hpp>       // MuMiniZinc::available_operators
 
 namespace
 {
@@ -343,10 +343,9 @@ void print_statistics(const MuMiniZinc::EntryResult& entries)
 
     std::print("{0:s}Total{1:s}: {2:s}{3:d}{1:s} mutants.\n\n", logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), entries.mutants().size());
 
-    const auto operators = MuMiniZinc::get_available_operators();
     std::println("{:s}{:s}Operator statistics{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
     for (auto [n, stats] : entries.statistics() | std::views::enumerate)
-        std::println("- {2:s}\n    - Amount:     {0:s}{3:d}{1:s}\n    - Occurences: {0:s}{4:d}{1:s}", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), operators[static_cast<std::size_t>(n)].first, stats.first, stats.second);
+        std::println("- {2:s}\n    - Amount:     {0:s}{3:d}{1:s}\n    - Occurences: {0:s}{4:d}{1:s}", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), MuMiniZinc::available_operators[static_cast<std::size_t>(n)].first, stats.first, stats.second);
 }
 
 template<typename Exception>
@@ -354,14 +353,12 @@ void throw_operator_option_error(std::string_view message)
 {
     auto error_string = std::format("{:s}\n\n{:s}{:s}Available operators{:s}:", message, logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
 
-    const auto available_operators = MuMiniZinc::get_available_operators();
-
-    const auto largest_operator = std::ranges::max_element(available_operators,
+    constexpr auto largest_operator = std::ranges::max_element(MuMiniZinc::available_operators,
         {}, [](const auto& element)
         { return element.first; })
-                                      ->first.length();
+                                          ->first.length();
 
-    for (const auto& [name, help] : MuMiniZinc::get_available_operators())
+    for (const auto& [name, help] : MuMiniZinc::available_operators)
         error_string += std::format("\n  {:<{}}  {}", name, largest_operator + 2, help);
 
     throw Exception { error_string };

@@ -1,5 +1,4 @@
 #define BOOST_TEST_MODULE test_mutant_relational
-
 #include <boost/test/unit_test.hpp>
 
 #include <algorithm>   // std::ranges::any_of
@@ -10,7 +9,7 @@
 #include <string_view> // std::string_view
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <mutation.hpp>                // MutationModel
+#include <mutation.hpp>                // MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args
 
 BOOST_AUTO_TEST_CASE(relational)
 {

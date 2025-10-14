@@ -10,7 +10,6 @@
 #include <functional>   // std::reference_wrapper
 #include <iostream>     // std::cerr
 #include <iterator>     // std::distance
-#include <optional>     // std::optional
 #include <span>         // std::span
 #include <sstream>      // std::ostringstream
 #include <stdexcept>    // std::runtime_error
@@ -64,17 +63,17 @@ constexpr bool is_quoted(std::string_view view) noexcept
 namespace
 {
 
-std::optional<std::string> get_stem_if_valid(const std::string_view model_stem, const std::filesystem::directory_entry& entry) noexcept
+std::string get_stem_if_valid(const std::string_view model_stem, const std::filesystem::directory_entry& entry) noexcept
 {
     if (!entry.is_regular_file() || entry.path().extension() != EXTENSION)
-        return std::nullopt;
+        return {};
 
     auto str = entry.path().stem().string();
 
     if (str == model_stem || (str.starts_with(model_stem) && str.size() >= model_stem.size() + 1 && str[model_stem.size()] == SEPARATOR))
         return str;
 
-    return std::nullopt;
+    return {};
 }
 
 void dump_file(const std::filesystem::path& path, std::string_view contents)
@@ -155,9 +154,6 @@ constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::str
 namespace MuMiniZinc
 {
 
-EntryResult::EntryResult() :
-    m_statistics(MuMiniZinc::get_available_operators().size()) { }
-
 void EntryResult::save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums)
 {
     if (model == nullptr)
@@ -171,21 +167,18 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
 
     fix_enums(detected_enums, output);
 
-    const auto operator_list = MuMiniZinc::get_available_operators();
-
-    const auto it = std::ranges::find_if(operator_list, [operator_name](const auto& element)
+    const auto* const it = std::ranges::find_if(available_operators, [operator_name](const auto& element)
         { return element.first == operator_name; });
 
-    if (it == operator_list.end())
+    if (it == available_operators.end())
         throw UnknownOperator { "Unknown operator found while trying to save the model." };
 
-    const auto operator_id = static_cast<std::size_t>(std::distance(operator_list.begin(), it));
+    const auto operator_id = static_cast<std::size_t>(std::distance(available_operators.begin(), it));
 
     m_statistics[operator_id].second = std::max(m_statistics[operator_id].second, occurrence_id);
 
-    const auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_model_name, SEPARATOR, operator_name, SEPARATOR, m_statistics[operator_id].first++, SEPARATOR, occurrence_id);
-
-    m_mutants.emplace_back(mutant, std::move(output));
+    auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_model_name, SEPARATOR, operator_name, SEPARATOR, m_statistics[operator_id].first++, SEPARATOR, occurrence_id);
+    m_mutants.emplace_back(std::move(mutant), std::move(output));
 }
 
 [[nodiscard]] std::filesystem::path get_path_from_model_path(const std::filesystem::path& model_path)
@@ -310,9 +303,9 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
     // Insert all the mutants found in the folder, but skip the original model.
     for (const auto& entry : std::filesystem::directory_iterator { parameters.directory_path })
     {
-        const auto stem = get_stem_if_valid(entry_result.m_model_name, entry);
+        auto stem = get_stem_if_valid(entry_result.m_model_name, entry);
 
-        if (!stem)
+        if (stem.empty())
             throw InvalidFile { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
 
         if (last_write_time_original > std::filesystem::file_time_type::min() && !last_write_ec)
@@ -323,12 +316,12 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
                 throw OutdatedMutant { "The original model is newer than the mutants, so they might be outdated. Please re-analyse the original model." };
         }
 
-        if (*stem == entry_result.m_model_name)
+        if (stem == entry_result.m_model_name)
             continue;
 
         if (!parameters.allowed_operators.empty())
         {
-            ascii_ci_string_view entry_view { *stem };
+            ascii_ci_string_view entry_view { stem };
 
             if (const auto pos = entry_view.find_first_not_of(ascii_ci_string_view { entry_result.m_model_name }); pos != ascii_ci_string_view::npos)
                 entry_view = entry_view.substr(pos + 1);
@@ -338,7 +331,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
                 continue;
         }
 
-        if (!parameters.allowed_mutants.empty() && !std::ranges::contains(parameters.allowed_mutants, ascii_ci_string_view { *stem }))
+        if (!parameters.allowed_mutants.empty() && !std::ranges::contains(parameters.allowed_mutants, ascii_ci_string_view { stem }))
             continue;
 
         const std::ifstream ifstream { entry.path() };
@@ -346,14 +339,14 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
         buffer << ifstream.rdbuf();
 
         if (ifstream.bad())
-            throw IOError { std::format(R"(Could not open the file "{:s}".)", entry.path().native()) };
+            throw IOError { std::format(R"(Could not open the file `{:s}`.)", entry.path().native()) };
 
         auto str = std::move(buffer).str();
 
         if (str.empty())
             throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), entry.path().native(), code(logging::Style::Reset)) };
 
-        entry_result.m_mutants.emplace_back(*stem, std::move(str));
+        entry_result.m_mutants.emplace_back(std::move(stem), std::move(str));
     }
 
     return entry_result;
@@ -422,7 +415,7 @@ void clear_mutant_output_folder(const std::filesystem::path& model_path, const s
     const auto model_path_stem = model_path.stem().string();
 
     for (const auto& entry : std::filesystem::directory_iterator { output_directory })
-        if (!get_stem_if_valid(model_path_stem, entry))
+        if (get_stem_if_valid(model_path_stem, entry).empty())
             throw InvalidFile { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
 
     std::filesystem::remove_all(output_directory);
