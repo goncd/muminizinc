@@ -20,8 +20,9 @@ using namespace std::string_view_literals;
 inline constexpr std::array available_operators {
     std::pair { "REL"sv, "Replaces a relational operator with another of the same type"sv },
     std::pair { "ART"sv, "Replaces an arithmetic operator with another of the same type"sv },
+    std::pair { "SET"sv, "Replaces a set operator with another of the same type"sv },
     std::pair { "UNA"sv, "Removes unary operators"sv },
-    std::pair { "CALL"sv, "Replace calls to some functions with some others"sv },
+    std::pair { "CALL"sv, "Replaces calls to some functions with some others"sv },
     std::pair { "SWP"sv, "Swaps function call arguments"sv }
 };
 

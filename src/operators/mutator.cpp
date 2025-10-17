@@ -4,8 +4,10 @@
 #include <array>       // std::array
 #include <cstdint>     // std::uint64_t
 #include <format>      // std::format
+#include <ranges>      // std::views::join
 #include <span>        // std::span
 #include <string_view> // std::string_view
+#include <utility>     // std::pair
 #include <vector>      // std::vector
 
 #include <minizinc/ast.hh> // MiniZinc::BinOpType, MiniZinc::Expression
@@ -18,7 +20,6 @@
 namespace
 {
 
-constexpr auto relational_operators_name { MuMiniZinc::available_operators[0].first };
 constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_LE,
     MiniZinc::BinOpType::BOT_LQ,
@@ -28,7 +29,6 @@ constexpr std::array relational_operators {
     MiniZinc::BinOpType::BOT_NQ,
 };
 
-constexpr auto arithmetic_operators_name { MuMiniZinc::available_operators[1].first };
 constexpr std::array arithmetic_operators {
     MiniZinc::BinOpType::BOT_PLUS,
     MiniZinc::BinOpType::BOT_MINUS,
@@ -39,17 +39,37 @@ constexpr std::array arithmetic_operators {
     MiniZinc::BinOpType::BOT_POW,
 };
 
-constexpr auto unary_operators_name { MuMiniZinc::available_operators[2].first };
+// Set operators that return a boolean
+constexpr std::array set_operators_bool {
+    MiniZinc::BinOpType::BOT_SUBSET,
+    MiniZinc::BinOpType::BOT_SUPERSET
+};
 
-constexpr auto call_name { MuMiniZinc::available_operators[3].first };
+constexpr std::array set_operators {
+    MiniZinc::BinOpType::BOT_UNION,
+    MiniZinc::BinOpType::BOT_DIFF,
+    MiniZinc::BinOpType::BOT_SYMDIFF,
+    MiniZinc::BinOpType::BOT_INTERSECT,
+};
+
+constexpr std::array binary_operators_categories {
+    std::pair { std::span<const MiniZinc::BinOpType> { relational_operators }, MuMiniZinc::available_operators[0].first },
+    std::pair { std::span<const MiniZinc::BinOpType> { arithmetic_operators }, MuMiniZinc::available_operators[1].first },
+    std::pair { std::span<const MiniZinc::BinOpType> { set_operators_bool }, MuMiniZinc::available_operators[2].first },
+    std::pair { std::span<const MiniZinc::BinOpType> { set_operators }, MuMiniZinc::available_operators[2].first }
+};
+
+constexpr auto unary_operators_name { MuMiniZinc::available_operators[3].first };
+
+constexpr auto call_name { MuMiniZinc::available_operators[4].first };
 const std::array calls {
     MiniZinc::Constants::constants().ids.forall,
     MiniZinc::Constants::constants().ids.exists,
 };
 
-constexpr auto call_swap_name { MuMiniZinc::available_operators[4].first };
+constexpr auto call_swap_name { MuMiniZinc::available_operators[5].first };
 
-};
+}
 
 namespace MuMiniZinc
 {
@@ -84,16 +104,14 @@ void Mutator::vBinOp(MiniZinc::BinOp* binOp)
     std::span<const MiniZinc::BinOpType> operators;
     std::string_view operator_name;
 
-    if (std::ranges::contains(relational_operators, binOp->op()))
-    {
-        operator_name = relational_operators_name;
-        operators = relational_operators;
-    }
-    else if (std::ranges::contains(arithmetic_operators, binOp->op()))
-    {
-        operator_name = arithmetic_operators_name;
-        operators = arithmetic_operators;
-    }
+    for (const auto [set, name] : binary_operators_categories)
+        if (std::ranges::contains(set, binOp->op()))
+        {
+            operators = set;
+            operator_name = name;
+
+            break;
+        }
 
     if (operators.empty())
         logd("vBinOp: Undetected mutation type");

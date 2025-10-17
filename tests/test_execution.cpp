@@ -87,6 +87,7 @@ void perform_test(const std::filesystem::path& path, std::span<const ascii_ci_st
 BOOST_AUTO_TEST_CASE(arithmetic)
 {
     constexpr auto path { "data/arithmetic.mzn"sv };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "ART" } };
 
     const std::array arithmetic_data_files {
         "data/arithmetic-1.dzn"s,
@@ -108,13 +109,14 @@ BOOST_AUTO_TEST_CASE(arithmetic)
         2_status,
     };
 
-    perform_test(path, std::array { ascii_ci_string_view { "ART" } }, arithmetic_data_files, arithmetic_results);
-    perform_test(path, std::array { ascii_ci_string_view { "ART" } }, arithmetic_data_files, arithmetic_results, "data/arithmetic-execution");
+    perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results);
+    perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results, "data/arithmetic-execution");
 }
 
 BOOST_AUTO_TEST_CASE(call_argument_swap)
 {
     constexpr auto path { "data/call_argument_swap.mzn"sv };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "SWP" } };
 
     constexpr std::array call_argument_swap_results {
         2_status,
@@ -124,26 +126,28 @@ BOOST_AUTO_TEST_CASE(call_argument_swap)
         2_status,
     };
 
-    perform_test(path, std::array { ascii_ci_string_view { "SWP" } }, {}, call_argument_swap_results);
-    perform_test(path, std::array { ascii_ci_string_view { "SWP" } }, {}, call_argument_swap_results, "data/call_argument_swap-execution");
+    perform_test(path, operator_to_test, {}, call_argument_swap_results);
+    perform_test(path, operator_to_test, {}, call_argument_swap_results, "data/call_argument_swap-execution");
 }
 
 BOOST_AUTO_TEST_CASE(call_swap)
 {
     constexpr auto path { "data/call_swap.mzn"sv };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "CALL" } };
 
     constexpr std::array call_swap_results {
         0_status,
         1_status,
     };
 
-    perform_test(path, std::array { ascii_ci_string_view { "CALL" } }, {}, call_swap_results);
-    perform_test(path, std::array { ascii_ci_string_view { "CALL" } }, {}, call_swap_results, "data/call_swap-execution");
+    perform_test(path, operator_to_test, {}, call_swap_results);
+    perform_test(path, operator_to_test, {}, call_swap_results, "data/call_swap-execution");
 }
 
 BOOST_AUTO_TEST_CASE(relational)
 {
     constexpr auto path { "data/relational.mzn"sv };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "REL" } };
 
     const std::array relational_data_files {
         "data/relational-1.dzn"s,
@@ -163,13 +167,30 @@ BOOST_AUTO_TEST_CASE(relational)
         1_status
     };
 
-    perform_test(path, std::array { ascii_ci_string_view { "REL" } }, relational_data_files, relational_results);
-    perform_test(path, std::array { ascii_ci_string_view { "REL" } }, relational_data_files, relational_results, "data/relational-execution");
+    perform_test(path, operator_to_test, relational_data_files, relational_results);
+    perform_test(path, operator_to_test, relational_data_files, relational_results, "data/relational-execution");
+}
+
+BOOST_AUTO_TEST_CASE(set)
+{
+    constexpr auto path { "data/set.mzn"sv };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "SET" } };
+
+    constexpr std::array set_results {
+        1_status,
+        1_status,
+        0_status,
+        1_status
+    };
+
+    perform_test(path, operator_to_test, {}, set_results);
+    perform_test(path, operator_to_test, {}, set_results, "data/set-execution");
 }
 
 BOOST_AUTO_TEST_CASE(unary)
 {
     constexpr auto path { "data/unary.mzn"sv };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "UNA" } };
 
     const std::array unary_data_files {
         "data/unary-1.dzn"s,
@@ -181,6 +202,6 @@ BOOST_AUTO_TEST_CASE(unary)
         1_status,
     };
 
-    perform_test(path, std::array { ascii_ci_string_view { "UNA" } }, unary_data_files, unary_results);
-    perform_test(path, std::array { ascii_ci_string_view { "UNA" } }, unary_data_files, unary_results, "data/unary-execution");
+    perform_test(path, operator_to_test, unary_data_files, unary_results);
+    perform_test(path, operator_to_test, unary_data_files, unary_results, "data/unary-execution");
 }
