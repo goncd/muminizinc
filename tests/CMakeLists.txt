@@ -4,6 +4,7 @@ set(TEST_SOURCES
     test_arguments.cpp
     test_execution.cpp
     test_mutant_arithmetic.cpp
+    test_mutant_boolean.cpp
     test_mutant_call_argument_swap.cpp
     test_mutant_call_swap.cpp
     test_mutant_set.cpp

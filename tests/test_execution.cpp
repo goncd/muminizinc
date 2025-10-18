@@ -113,6 +113,23 @@ BOOST_AUTO_TEST_CASE(arithmetic)
     perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results, "data/arithmetic-execution");
 }
 
+BOOST_AUTO_TEST_CASE(boolean)
+{
+    constexpr auto path { "data/boolean.mzn"sv };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "BOOL" } };
+
+    constexpr std::array boolean_results {
+        0_status,
+        0_status,
+        0_status,
+        0_status,
+        1_status
+    };
+
+    perform_test(path, operator_to_test, {}, boolean_results);
+    perform_test(path, operator_to_test, {}, boolean_results, "data/boolean-execution");
+}
+
 BOOST_AUTO_TEST_CASE(call_argument_swap)
 {
     constexpr auto path { "data/call_argument_swap.mzn"sv };

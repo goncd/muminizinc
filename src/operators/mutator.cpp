@@ -4,7 +4,6 @@
 #include <array>       // std::array
 #include <cstdint>     // std::uint64_t
 #include <format>      // std::format
-#include <ranges>      // std::views::join
 #include <span>        // std::span
 #include <string_view> // std::string_view
 #include <utility>     // std::pair
@@ -52,22 +51,32 @@ constexpr std::array set_operators {
     MiniZinc::BinOpType::BOT_INTERSECT,
 };
 
+constexpr std::array boolean_operators {
+    MiniZinc::BinOpType::BOT_EQUIV,
+    MiniZinc::BinOpType::BOT_IMPL,
+    MiniZinc::BinOpType::BOT_RIMPL,
+    MiniZinc::BinOpType::BOT_OR,
+    MiniZinc::BinOpType::BOT_AND,
+    MiniZinc::BinOpType::BOT_XOR,
+};
+
 constexpr std::array binary_operators_categories {
     std::pair { std::span<const MiniZinc::BinOpType> { relational_operators }, MuMiniZinc::available_operators[0].first },
     std::pair { std::span<const MiniZinc::BinOpType> { arithmetic_operators }, MuMiniZinc::available_operators[1].first },
     std::pair { std::span<const MiniZinc::BinOpType> { set_operators_bool }, MuMiniZinc::available_operators[2].first },
-    std::pair { std::span<const MiniZinc::BinOpType> { set_operators }, MuMiniZinc::available_operators[2].first }
+    std::pair { std::span<const MiniZinc::BinOpType> { set_operators }, MuMiniZinc::available_operators[2].first },
+    std::pair { std::span<const MiniZinc::BinOpType> { boolean_operators }, MuMiniZinc::available_operators[3].first },
 };
 
-constexpr auto unary_operators_name { MuMiniZinc::available_operators[3].first };
+constexpr auto unary_operators_name { MuMiniZinc::available_operators[4].first };
 
-constexpr auto call_name { MuMiniZinc::available_operators[4].first };
+constexpr auto call_name { MuMiniZinc::available_operators[5].first };
 const std::array calls {
     MiniZinc::Constants::constants().ids.forall,
     MiniZinc::Constants::constants().ids.exists,
 };
 
-constexpr auto call_swap_name { MuMiniZinc::available_operators[5].first };
+constexpr auto call_swap_name { MuMiniZinc::available_operators[6].first };
 
 }
 
@@ -96,7 +105,7 @@ void throw_if_invalid_operators(std::span<const ascii_ci_string_view> allowed_op
 
 void Mutator::vBinOp(MiniZinc::BinOp* binOp)
 {
-    logd("vBinOP: Detected operation {}", binOp->opToString().c_str());
+    logd("vBinOP: Detected operator {}", binOp->opToString().c_str());
 
     if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { unary_operators_name }))
         perform_mutation_unop(binOp, unary_operators_name);
