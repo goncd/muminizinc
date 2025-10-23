@@ -87,7 +87,7 @@ void perform_test(const std::filesystem::path& path, std::span<const ascii_ci_st
 BOOST_AUTO_TEST_CASE(arithmetic)
 {
     constexpr auto path { "data/arithmetic.mzn"sv };
-    constexpr std::array operator_to_test { ascii_ci_string_view { "ART" } };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "AOR" } };
 
     const std::array arithmetic_data_files {
         "data/arithmetic-1.dzn"s,
@@ -116,7 +116,7 @@ BOOST_AUTO_TEST_CASE(arithmetic)
 BOOST_AUTO_TEST_CASE(boolean)
 {
     constexpr auto path { "data/boolean.mzn"sv };
-    constexpr std::array operator_to_test { ascii_ci_string_view { "BOOL" } };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "COR" } };
 
     constexpr std::array boolean_results {
         0_status,
@@ -133,7 +133,7 @@ BOOST_AUTO_TEST_CASE(boolean)
 BOOST_AUTO_TEST_CASE(call_argument_swap)
 {
     constexpr auto path { "data/call_argument_swap.mzn"sv };
-    constexpr std::array operator_to_test { ascii_ci_string_view { "SWP" } };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "FAS" } };
 
     constexpr std::array call_argument_swap_results {
         2_status,
@@ -150,7 +150,7 @@ BOOST_AUTO_TEST_CASE(call_argument_swap)
 BOOST_AUTO_TEST_CASE(call_swap)
 {
     constexpr auto path { "data/call_swap.mzn"sv };
-    constexpr std::array operator_to_test { ascii_ci_string_view { "CALL" } };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "FCR" } };
 
     constexpr std::array call_swap_results {
         0_status,
@@ -164,7 +164,7 @@ BOOST_AUTO_TEST_CASE(call_swap)
 BOOST_AUTO_TEST_CASE(relational)
 {
     constexpr auto path { "data/relational.mzn"sv };
-    constexpr std::array operator_to_test { ascii_ci_string_view { "REL" } };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "ROR" } };
 
     const std::array relational_data_files {
         "data/relational-1.dzn"s,
@@ -191,7 +191,7 @@ BOOST_AUTO_TEST_CASE(relational)
 BOOST_AUTO_TEST_CASE(set)
 {
     constexpr auto path { "data/set.mzn"sv };
-    constexpr std::array operator_to_test { ascii_ci_string_view { "SET" } };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "SOR" } };
 
     constexpr std::array set_results {
         1_status,
@@ -207,7 +207,7 @@ BOOST_AUTO_TEST_CASE(set)
 BOOST_AUTO_TEST_CASE(unary)
 {
     constexpr auto path { "data/unary.mzn"sv };
-    constexpr std::array operator_to_test { ascii_ci_string_view { "UNA" } };
+    constexpr std::array operator_to_test { ascii_ci_string_view { "UOD" } };
 
     const std::array unary_data_files {
         "data/unary-1.dzn"s,

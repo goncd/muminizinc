@@ -32,7 +32,7 @@ output  ["negative value is "++format(value)++"\n"];
 )"sv
     };
 
-    constexpr std::array allowed_operators { ascii_ci_string_view { "UNA" } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "UOD" } };
 
     const std::filesystem::path model_path { "data/unary.mzn" };
 

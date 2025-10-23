@@ -36,7 +36,7 @@ constraint 100^value < 150;
 )"sv
     };
 
-    constexpr std::array allowed_operators { ascii_ci_string_view { "ART" } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "AOR" } };
     const std::filesystem::path model_path { "data/arithmetic.mzn" };
 
     const MuMiniZinc::find_mutants_args find_parameters {

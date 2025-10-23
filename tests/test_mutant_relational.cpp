@@ -33,7 +33,7 @@ constraint value!=5;
 )"sv,
     };
 
-    constexpr std::array allowed_operators { ascii_ci_string_view { "REL" } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "ROR" } };
 
     const std::filesystem::path model_path { "data/relational.mzn" };
 

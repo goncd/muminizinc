@@ -18,13 +18,13 @@ class EntryResult;
 using namespace std::string_view_literals;
 
 inline constexpr std::array available_operators {
-    std::pair { "REL"sv, "Replaces a relational operator with another of the same type"sv },
-    std::pair { "ART"sv, "Replaces an arithmetic operator with another of the same type"sv },
-    std::pair { "SET"sv, "Replaces a set operator with another of the same type"sv },
-    std::pair { "BOOL"sv, "Replaces a boolean operator with another of the same type"sv },
-    std::pair { "UNA"sv, "Removes unary operators"sv },
-    std::pair { "CALL"sv, "Replaces calls to some functions with some others"sv },
-    std::pair { "SWP"sv, "Swaps function call arguments"sv }
+    std::pair { "ROR"sv, "Relational operator replacement"sv },
+    std::pair { "AOR"sv, "Arithmetic operator replacement"sv },
+    std::pair { "SOR"sv, "Set operator replacement"sv },
+    std::pair { "COR"sv, "Conditional operator replacement"sv },
+    std::pair { "UOD"sv, "Unary operator deletion"sv },
+    std::pair { "FCR"sv, "Function call replacement"sv },
+    std::pair { "FAS"sv, "Function call argument swap"sv }
 };
 
 class UnknownOperator : public std::runtime_error

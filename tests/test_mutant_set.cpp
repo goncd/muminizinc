@@ -42,7 +42,7 @@ constraint b intersect c==a;
 )"sv
     };
 
-    constexpr std::array allowed_operators { ascii_ci_string_view { "SET" } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "SOR" } };
     const std::filesystem::path model_path { "data/set.mzn" };
 
     const MuMiniZinc::find_mutants_args find_parameters {

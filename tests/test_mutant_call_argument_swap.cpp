@@ -53,7 +53,7 @@ output  [((((("\""++str)++"\" has ")++format(string_length(str)))++
 )"sv
     };
 
-    constexpr std::array allowed_operators { ascii_ci_string_view { "SWP" } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "FAS" } };
 
     const std::filesystem::path model_path { "data/call_argument_swap.mzn" };
 

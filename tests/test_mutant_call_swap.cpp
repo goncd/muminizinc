@@ -28,7 +28,7 @@ constraint forall ( x in arr2 ) ( x > 3 );
 )"sv
     };
 
-    constexpr std::array allowed_operators { ascii_ci_string_view { "CALL" } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "FCR" } };
 
     const std::filesystem::path model_path { "data/call_swap.mzn" };
 

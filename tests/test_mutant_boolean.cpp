@@ -33,7 +33,7 @@ constraint a xor true;
 )"sv
     };
 
-    constexpr std::array allowed_operators { ascii_ci_string_view { "BOOL" } };
+    constexpr std::array allowed_operators { ascii_ci_string_view { "COR" } };
     const std::filesystem::path model_path { "data/boolean.mzn" };
 
     const MuMiniZinc::find_mutants_args find_parameters {
