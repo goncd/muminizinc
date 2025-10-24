@@ -360,7 +360,7 @@ nlohmann::json get_statistics_json(const MuMiniZinc::EntryResult& entries)
                           return nlohmann::json{
                               {"name", MuMiniZinc::available_operators[static_cast<std::size_t>(index)].first},
                               {"amount", stats_pair.first},
-                              {"occurences", stats_pair.second}
+                              {"occurrences", stats_pair.second}
                           }; });
 
     return nlohmann::json {
@@ -386,7 +386,7 @@ void print_statistics(const MuMiniZinc::EntryResult& entries)
 
     std::println("{:s}{:s}Operator statistics{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
     for (auto [n, stats] : entries.statistics() | std::views::enumerate)
-        std::println("- {2:s}\n    - Amount:     {0:s}{3:d}{1:s}\n    - Occurences: {0:s}{4:d}{1:s}", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), MuMiniZinc::available_operators[static_cast<std::size_t>(n)].first, stats.first, stats.second);
+        std::println("- {2:s}\n    - Amount:     {0:s}{3:d}{1:s}\n    - Occurrences: {0:s}{4:d}{1:s}", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), MuMiniZinc::available_operators[static_cast<std::size_t>(n)].first, stats.first, stats.second);
 }
 
 template<typename Exception>
