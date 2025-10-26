@@ -18,12 +18,12 @@
 #define MZN_VERSION_FULL "version " MZN_VERSION
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <executor.hpp>                //
 #include <logging.hpp>                 // logging::output
-#include <operators/mutator.hpp>       // MuMiniZinc::available_operators
+#include <operators.hpp>               // MuMiniZinc::available_operators
 
 namespace MuMiniZinc
 {
+
 class OutdatedMutant : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
@@ -80,13 +80,12 @@ class EntryResult
 
     friend EntryResult find_mutants(const find_mutants_args& parameters);
     friend EntryResult retrieve_mutants(const retrieve_mutants_args& parameters);
-    friend void execute_mutants(const MuMiniZinc::execution_args& parameters);
+    friend void run_mutants(const run_mutants_args& parameters);
     friend class Mutator;
 
     void save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums);
 
 public:
-
     [[nodiscard]] constexpr std::span<const Entry> mutants() const noexcept { return m_mutants; }
     [[nodiscard]] constexpr std::string_view model_name() const noexcept { return m_model_name; }
     [[nodiscard]] constexpr std::string_view normalized_model() const noexcept { return m_model_contents; }
@@ -163,6 +162,6 @@ void clear_mutant_output_folder(const std::filesystem::path& model_path, const s
 [[nodiscard]] constexpr std::string_view get_version() noexcept { return MZN_VERSION; }
 [[nodiscard]] constexpr std::string_view get_version_full() noexcept { return MZN_VERSION_FULL; }
 
-}
+} // namespace MuMiniZinc
 
 #endif

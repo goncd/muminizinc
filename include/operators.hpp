@@ -1,5 +1,5 @@
-#ifndef OPERATOR_MUTATOR_HPP
-#define OPERATOR_MUTATOR_HPP
+#ifndef OPERATORS_HPP
+#define OPERATORS_HPP
 
 #include <array>       // std::array
 #include <span>        // std::span
@@ -76,6 +76,6 @@ private:
     void perform_call_swap_mutation(MiniZinc::Call* call);
 };
 
-}
+} // namespace MuMiniZinc
 
 #endif

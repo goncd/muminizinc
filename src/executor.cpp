@@ -170,14 +170,14 @@ namespace MuMiniZinc
 
 void execute_mutants(const MuMiniZinc::execution_args& parameters)
 {
-    if (parameters.entry_result.mutants().empty())
+    if (parameters.entries.empty())
         return;
 
     for (const auto mutant : parameters.allowed_mutants)
     {
         bool found = false;
 
-        for (const auto& entry : parameters.entry_result.mutants())
+        for (const auto& entry : parameters.entries)
         {
             if (mutant == entry.name)
             {
@@ -189,6 +189,11 @@ void execute_mutants(const MuMiniZinc::execution_args& parameters)
         if (!found)
             throw MuMiniZinc::UnknownMutant { std::format("Unknown mutant `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
     }
+
+    boost::asio::io_context ctx;
+
+    if (parameters.check_compiler_version)
+        check_version(ctx, parameters.compiler_path);
 
     // Set the arguments for the executable.
     std::vector<boost::string_view> arguments;
@@ -219,17 +224,17 @@ void execute_mutants(const MuMiniZinc::execution_args& parameters)
     std::queue<OriginalJob> original_jobs;
 
     if (parameters.data_files.empty())
-        original_jobs.emplace(parameters.entry_result.normalized_model(), std::string_view {}, original_outputs.front());
+        original_jobs.emplace(parameters.normalized_model, std::string_view {}, original_outputs.front());
     else
     {
         for (const auto [index, data_file] : std::ranges::views::enumerate(parameters.data_files))
-            original_jobs.emplace(parameters.entry_result.normalized_model(), data_file, original_outputs[static_cast<std::size_t>(index)]);
+            original_jobs.emplace(parameters.normalized_model, data_file, original_outputs[static_cast<std::size_t>(index)]);
     }
 
     // Now, add all the mutants with all the data files and compare their outputs against the original model.
     std::queue<MutantJob> mutant_jobs;
 
-    for (auto& mutant : parameters.entry_result.m_mutants)
+    for (auto& mutant : parameters.entries)
     {
         if (!parameters.allowed_mutants.empty() && !std::ranges::contains(parameters.allowed_mutants, ascii_ci_string_view { mutant.name }))
             continue;
@@ -248,11 +253,6 @@ void execute_mutants(const MuMiniZinc::execution_args& parameters)
         }
     }
 
-    boost::asio::io_context ctx;
-
-    if (parameters.check_compiler_version)
-        check_version(ctx, parameters.compiler_path);
-
     const double total_tasks { static_cast<double>(original_jobs.size() + mutant_jobs.size()) };
 
     std::uint64_t completed_tasks {};
@@ -269,4 +269,4 @@ void execute_mutants(const MuMiniZinc::execution_args& parameters)
     ctx.run();
 }
 
-}
+} // namespace MuMiniZinc

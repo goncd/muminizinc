@@ -1,4 +1,4 @@
-#include <operators/mutator.hpp>
+#include <operators.hpp>
 
 #include <algorithm>   // std::ranges::equal, std::ranges::next_permutation, std::ranges::sort
 #include <array>       // std::array
@@ -110,11 +110,12 @@ void Mutator::vBinOp(MiniZinc::BinOp* binOp)
     if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { unary_operators_name }))
         perform_mutation_unop(binOp, unary_operators_name);
 
+    const auto detected_operator = binOp->op();
     std::span<const MiniZinc::BinOpType> operators;
     std::string_view operator_name;
 
     for (const auto [set, name] : binary_operators_categories)
-        if (std::ranges::contains(set, binOp->op()))
+        if (std::ranges::contains(set, detected_operator))
         {
             operators = set;
             operator_name = name;
@@ -221,14 +222,6 @@ void Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::A
 {
     const auto original_call = call->id();
 
-    if constexpr (MuMiniZinc::config::is_debug_build)
-    {
-        [[maybe_unused]] const auto& loc = MiniZinc::Expression::loc(call);
-
-        logd("Mutating {}-{} to {}-{}",
-            loc.firstLine(), loc.firstColumn(), loc.lastLine(), loc.lastColumn());
-    }
-
     std::uint64_t occurrence_id {};
 
     for (const auto& candidate_call : calls)
@@ -276,4 +269,4 @@ void Mutator::perform_call_swap_mutation(MiniZinc::Call* call)
     call->args(original);
 }
 
-}
+} // namespace MuMiniZinc

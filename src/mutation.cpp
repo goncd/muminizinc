@@ -29,11 +29,11 @@
 #include <minizinc/parser.hh>        // MiniZinc::parse
 #include <minizinc/prettyprinter.hh> // MiniZinc::Printer
 
-#include <build/config.hpp>            // MiniZinc::config::is_debug_build
+#include <build/config.hpp>            // MuMiniZinc::config::is_debug_build
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <executor.hpp>                //
+#include <executor.hpp>                // MuMiniZinc::execute_mutants, MuMiniZinc::execution_args
 #include <logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
-#include <operators/mutator.hpp>       // MiniZinc::throw_if_invalid_operators
+#include <operators.hpp>               // MuMiniZinc::throw_if_invalid_operators
 
 namespace
 {
@@ -393,7 +393,8 @@ void run_mutants(const run_mutants_args& parameters)
         .compiler_path = parameters.compiler_path,
         .compiler_arguments = parameters.compiler_arguments,
         .data_files = parameters.data_files,
-        .entry_result = parameters.entry_result,
+        .entries = parameters.entry_result.m_mutants,
+        .normalized_model = parameters.entry_result.normalized_model(),
         .timeout = parameters.timeout,
         .n_jobs = parameters.n_jobs,
         .allowed_mutants = parameters.allowed_mutants,
@@ -410,15 +411,15 @@ void clear_mutant_output_folder(const std::filesystem::path& model_path, const s
         throw std::runtime_error { "There is nothing to clear." };
 
     if (!std::filesystem::is_directory(output_directory))
-        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", output_directory.native()) };
+        throw IOError { std::format("Folder `{:s}` does not exist.", output_directory.native()) };
 
     const auto model_path_stem = model_path.stem().string();
 
     for (const auto& entry : std::filesystem::directory_iterator { output_directory })
         if (get_stem_if_valid(model_path_stem, entry).empty())
-            throw InvalidFile { R"(One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder.)" };
+            throw InvalidFile { "One or more elements inside the selected path are not models or mutants from the specified model. Cannot automatically remove the output folder." };
 
     std::filesystem::remove_all(output_directory);
 }
 
-}
+} // namespace MuMiniZinc

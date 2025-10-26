@@ -32,7 +32,7 @@
 #include <executor.hpp>                // BadVersion
 #include <logging.hpp>                 // logging::code, logging::Color, logging::Style
 #include <mutation.hpp>                // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::EntryResult, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::get_path_from_model_path, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
-#include <operators/mutator.hpp>       // MuMiniZinc::available_operators
+#include <operators.hpp>               // MuMiniZinc::available_operators
 
 namespace
 {
@@ -1071,8 +1071,8 @@ int normalise(std::span<const std::string_view> arguments)
 
 int clean(std::span<const std::string_view> arguments)
 {
-    std::string_view model_path {};
-    std::string_view output_directory {};
+    std::string_view model_path;
+    std::string_view output_directory;
 
     for (std::size_t i { 1 }; i < arguments.size(); ++i)
     {
