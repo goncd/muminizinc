@@ -1,4 +1,4 @@
-find_package(Boost 1.88 REQUIRED COMPONENTS unit_test_framework)
+find_package(Boost 1.88.0 REQUIRED COMPONENTS unit_test_framework)
 
 set(TEST_SOURCES
     test_arguments.cpp

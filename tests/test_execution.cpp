@@ -7,7 +7,6 @@
 #include <ranges>      // std::views::enumerate
 #include <span>        // std::span
 #include <string>      // std::string
-#include <string_view> // std::string_view
 #include <type_traits> // std::underlying_type_t
 #include <utility>     // std::to_underlying
 
@@ -18,10 +17,11 @@
 #include <mutation.hpp> // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
 
 using namespace std::string_literals;
-using namespace std::string_view_literals;
 
 namespace
 {
+
+const std::filesystem::path data_path { "data" };
 
 constexpr auto operator""_status(unsigned long long value) noexcept
 {
@@ -86,8 +86,8 @@ void perform_test(const std::filesystem::path& path, std::span<const ascii_ci_st
 
 BOOST_AUTO_TEST_CASE(arithmetic)
 {
-    constexpr auto path { "data/arithmetic.mzn"sv };
     constexpr std::array operator_to_test { ascii_ci_string_view { "AOR" } };
+    const auto path { data_path / "arithmetic.mzn" };
 
     const std::array arithmetic_data_files {
         "data/arithmetic-1.dzn"s,
@@ -110,13 +110,13 @@ BOOST_AUTO_TEST_CASE(arithmetic)
     };
 
     perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results);
-    perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results, "data/arithmetic-execution");
+    perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results, data_path / "arithmetic-execution");
 }
 
 BOOST_AUTO_TEST_CASE(boolean)
 {
-    constexpr auto path { "data/boolean.mzn"sv };
     constexpr std::array operator_to_test { ascii_ci_string_view { "COR" } };
+    const auto path { data_path / "boolean.mzn" };
 
     constexpr std::array boolean_results {
         0_status,
@@ -127,13 +127,13 @@ BOOST_AUTO_TEST_CASE(boolean)
     };
 
     perform_test(path, operator_to_test, {}, boolean_results);
-    perform_test(path, operator_to_test, {}, boolean_results, "data/boolean-execution");
+    perform_test(path, operator_to_test, {}, boolean_results, data_path / "boolean-execution");
 }
 
 BOOST_AUTO_TEST_CASE(call_argument_swap)
 {
-    constexpr auto path { "data/call_argument_swap.mzn"sv };
     constexpr std::array operator_to_test { ascii_ci_string_view { "FAS" } };
+    const auto path { data_path / "call_argument_swap.mzn" };
 
     constexpr std::array call_argument_swap_results {
         2_status,
@@ -144,13 +144,13 @@ BOOST_AUTO_TEST_CASE(call_argument_swap)
     };
 
     perform_test(path, operator_to_test, {}, call_argument_swap_results);
-    perform_test(path, operator_to_test, {}, call_argument_swap_results, "data/call_argument_swap-execution");
+    perform_test(path, operator_to_test, {}, call_argument_swap_results, data_path / "call_argument_swap-execution");
 }
 
 BOOST_AUTO_TEST_CASE(call_swap)
 {
-    constexpr auto path { "data/call_swap.mzn"sv };
     constexpr std::array operator_to_test { ascii_ci_string_view { "FCR" } };
+    const auto path { data_path / "call_swap.mzn" };
 
     constexpr std::array call_swap_results {
         0_status,
@@ -158,13 +158,13 @@ BOOST_AUTO_TEST_CASE(call_swap)
     };
 
     perform_test(path, operator_to_test, {}, call_swap_results);
-    perform_test(path, operator_to_test, {}, call_swap_results, "data/call_swap-execution");
+    perform_test(path, operator_to_test, {}, call_swap_results, data_path / "call_swap-execution");
 }
 
 BOOST_AUTO_TEST_CASE(relational)
 {
-    constexpr auto path { "data/relational.mzn"sv };
     constexpr std::array operator_to_test { ascii_ci_string_view { "ROR" } };
+    const auto path { data_path / "relational.mzn" };
 
     const std::array relational_data_files {
         "data/relational-1.dzn"s,
@@ -185,13 +185,13 @@ BOOST_AUTO_TEST_CASE(relational)
     };
 
     perform_test(path, operator_to_test, relational_data_files, relational_results);
-    perform_test(path, operator_to_test, relational_data_files, relational_results, "data/relational-execution");
+    perform_test(path, operator_to_test, relational_data_files, relational_results, data_path / "relational-execution");
 }
 
 BOOST_AUTO_TEST_CASE(set)
 {
-    constexpr auto path { "data/set.mzn"sv };
     constexpr std::array operator_to_test { ascii_ci_string_view { "SOR" } };
+    const auto path { data_path / "set.mzn" };
 
     constexpr std::array set_results {
         1_status,
@@ -201,13 +201,13 @@ BOOST_AUTO_TEST_CASE(set)
     };
 
     perform_test(path, operator_to_test, {}, set_results);
-    perform_test(path, operator_to_test, {}, set_results, "data/set-execution");
+    perform_test(path, operator_to_test, {}, set_results, data_path / "set-execution");
 }
 
 BOOST_AUTO_TEST_CASE(unary)
 {
-    constexpr auto path { "data/unary.mzn"sv };
     constexpr std::array operator_to_test { ascii_ci_string_view { "UOD" } };
+    const auto path { data_path / "unary.mzn" };
 
     const std::array unary_data_files {
         "data/unary-1.dzn"s,
@@ -220,5 +220,5 @@ BOOST_AUTO_TEST_CASE(unary)
     };
 
     perform_test(path, operator_to_test, unary_data_files, unary_results);
-    perform_test(path, operator_to_test, unary_data_files, unary_results, "data/unary-execution");
+    perform_test(path, operator_to_test, unary_data_files, unary_results, data_path / "unary-execution");
 }

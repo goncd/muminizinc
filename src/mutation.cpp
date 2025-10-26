@@ -79,17 +79,17 @@ std::string get_stem_if_valid(const std::string_view model_stem, const std::file
 void dump_file(const std::filesystem::path& path, std::string_view contents)
 {
     if (std::filesystem::exists(path))
-        throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` already exists.", logging::code(logging::Color::Blue), path.native(), logging::code(logging::Style::Reset)) };
+        throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` already exists.", logging::code(logging::Color::Blue), logging::path_to_utf8(path), logging::code(logging::Style::Reset)) };
 
     std::ofstream file { path };
 
     if (!file.is_open())
-        throw MuMiniZinc::IOError { std::format(R"(Could not open the mutant file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), path.native(), logging::code(logging::Style::Reset)) };
+        throw MuMiniZinc::IOError { std::format(R"(Could not open the mutant file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), logging::path_to_utf8(path), logging::code(logging::Style::Reset)) };
 
     file << contents;
 
     if (file.bad())
-        throw MuMiniZinc::IOError { std::format(R"(Could not write to the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), path.native(), logging::code(logging::Style::Reset)) };
+        throw MuMiniZinc::IOError { std::format(R"(Could not write to the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), logging::path_to_utf8(path), logging::code(logging::Style::Reset)) };
 }
 
 constexpr void fix_enums(const std::span<const std::pair<std::string, std::string>>& detected_enums, std::string& model)
@@ -129,10 +129,10 @@ constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::str
         const auto status = std::filesystem::status(element);
 
         if (!std::filesystem::exists(status))
-            throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), element.get().native(), logging::code(logging::Style::Reset)) };
+            throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), logging::path_to_utf8(element.get()), logging::code(logging::Style::Reset)) };
 
         if (std::filesystem::is_directory(status))
-            throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` is a directory.", logging::code(logging::Color::Blue), element.get().native(), logging::code(logging::Style::Reset)) };
+            throw MuMiniZinc::IOError { std::format("The path `{:s}{:s}{:s}` is a directory.", logging::code(logging::Color::Blue), logging::path_to_utf8(element.get()), logging::code(logging::Style::Reset)) };
 
         if (!element.get().has_stem())
             throw MuMiniZinc::IOError { "Could not determine the filename without extension of the model." };
@@ -143,7 +143,7 @@ constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::str
         buffer << ifstream.rdbuf();
 
         if (ifstream.bad())
-            throw MuMiniZinc::IOError { std::format(R"(Could not open the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), element.get().native(), logging::code(logging::Style::Reset)) };
+            throw MuMiniZinc::IOError { std::format(R"(Could not open the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), logging::path_to_utf8(element.get()), logging::code(logging::Style::Reset)) };
 
         return std::pair { element.get().stem().string(), std::move(buffer).str() };
     }
@@ -167,7 +167,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
 
     fix_enums(detected_enums, output);
 
-    const auto* const it = std::ranges::find_if(available_operators, [operator_name](const auto& element)
+    const auto it = std::ranges::find_if(available_operators, [operator_name](const auto& element)
         { return element.first == operator_name; });
 
     if (it == available_operators.end())
@@ -279,15 +279,15 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
     throw_if_invalid_operators(parameters.allowed_operators);
 
     if (!std::filesystem::is_directory(parameters.directory_path))
-        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", parameters.directory_path.native()) };
+        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", logging::path_to_utf8(parameters.directory_path)) };
 
     // Insert the original model first.
-    const std::ifstream ifstream { parameters.model_path };
+    const std::ifstream original_model_stream { parameters.model_path };
     std::stringstream buffer;
-    buffer << ifstream.rdbuf();
+    buffer << original_model_stream.rdbuf();
 
-    if (ifstream.bad())
-        throw IOError { std::format(R"(Could not open the file "{:s}".)", parameters.model_path.native()) };
+    if (original_model_stream.bad())
+        throw IOError { std::format(R"(Could not open the file "{:s}".)", logging::path_to_utf8(parameters.model_path)) };
 
     if (!parameters.model_path.has_stem())
         throw IOError { "Could not determine the filename without extension of the model." };
@@ -339,12 +339,12 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
         buffer << ifstream.rdbuf();
 
         if (ifstream.bad())
-            throw IOError { std::format(R"(Could not open the file `{:s}`.)", entry.path().native()) };
+            throw IOError { std::format(R"(Could not open the file `{:s}`.)", logging::path_to_utf8(entry.path())) };
 
         auto str = std::move(buffer).str();
 
         if (str.empty())
-            throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), entry.path().native(), code(logging::Style::Reset)) };
+            throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), logging::path_to_utf8(entry.path()), code(logging::Style::Reset)) };
 
         entry_result.m_mutants.emplace_back(std::move(stem), std::move(str));
     }
@@ -360,18 +360,18 @@ void dump_mutants(const EntryResult& entries, const std::filesystem::path& direc
     if (std::filesystem::exists(directory))
     {
         if (!std::filesystem::is_directory(directory))
-            throw MuMiniZinc::IOError { std::format("The selected path for storing the mutants, `{:s}{:s}{:s}`, is not a directory.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
+            throw MuMiniZinc::IOError { std::format("The selected path for storing the mutants, `{:s}{:s}{:s}`, is not a directory.", logging::code(logging::Color::Blue), logging::path_to_utf8(directory), logging::code(logging::Style::Reset)) };
     }
     else
     {
         std::error_code error_code;
 
         if (!std::filesystem::create_directory(directory, error_code) || error_code)
-            throw MuMiniZinc::IOError { std::format("Could not create the directory `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
+            throw MuMiniZinc::IOError { std::format("Could not create the directory `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), logging::path_to_utf8(directory), logging::code(logging::Style::Reset)) };
     }
 
     if (!std::filesystem::is_empty(directory))
-        throw MuMiniZinc::IOError { std::format("The selected path for storing the mutants, `{:s}{:s}{:s}`, is non-empty. Please clean it first to avoid accidental data loss.", logging::code(logging::Color::Blue), directory.native(), logging::code(logging::Style::Reset)) };
+        throw MuMiniZinc::IOError { std::format("The selected path for storing the mutants, `{:s}{:s}{:s}`, is non-empty. Please clean it first to avoid accidental data loss.", logging::code(logging::Color::Blue), logging::path_to_utf8(directory), logging::code(logging::Style::Reset)) };
 
     for (const auto& mutant : entries.mutants())
     {
@@ -411,7 +411,7 @@ void clear_mutant_output_folder(const std::filesystem::path& model_path, const s
         throw std::runtime_error { "There is nothing to clear." };
 
     if (!std::filesystem::is_directory(output_directory))
-        throw IOError { std::format("Folder `{:s}` does not exist.", output_directory.native()) };
+        throw IOError { std::format("Folder `{:s}` does not exist.", logging::path_to_utf8(output_directory)) };
 
     const auto model_path_stem = model_path.stem().string();
 

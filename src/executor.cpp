@@ -8,6 +8,7 @@
 #include <format>      // std::format
 #include <memory>      // std::make_unique
 #include <queue>       // std::queue
+#include <ranges>      // std::ranges::views::enumerate
 #include <span>        // std::span
 #include <string>      // std::string
 #include <string_view> // std::string_view
@@ -60,7 +61,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
     jobs.pop();
 
     if (!job.data_file.empty())
-        arguments.back() = boost::string_view { job.data_file.begin(), job.data_file.size() };
+        arguments.back() = boost::string_view { job.data_file.data(), job.data_file.size() };
 
     boost::asio::readable_pipe out_pipe { ctx };
     boost::asio::readable_pipe err_pipe { ctx };
@@ -108,14 +109,17 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
 
             boost::asio::read(exit_code == EXIT_SUCCESS ? out_pipe : err_pipe, boost::asio::dynamic_buffer(output), error_code);
 
-            if (error_code != boost::asio::error::eof)
+            if (output.empty())
+            {
+                logging_output.println(); // Print a new line so the exception message is below the progress text.
                 throw MuMiniZinc::ExecutionError { "Cannot grab the output of the executable." };
+            }
 
             if constexpr(std::is_same_v<Job, OriginalJob>)
             {
                 if (exit_code != EXIT_SUCCESS)
                 {
-                    logging_output.println(); // Print a new line so the exception message is below the progress text.
+                    logging_output.println();
                     throw MuMiniZinc::ExecutionError { std::format("Could not run the original model:\n{:s}", output) };
                 }
 
@@ -151,7 +155,7 @@ void check_version(boost::asio::io_context& ctx, const std::filesystem::path& pa
 
     boost::asio::read(out_pipe, boost::asio::dynamic_buffer(output), error_code);
 
-    if (error_code != boost::asio::error::eof)
+    if (output.empty())
         throw MuMiniZinc::BadVersion { "Could not verify the compiler's version: Could not grab the output." };
 
     process.wait();
@@ -202,7 +206,7 @@ void execute_mutants(const MuMiniZinc::execution_args& parameters)
     arguments.emplace_back("-");
 
     for (const auto argument : parameters.compiler_arguments)
-        arguments.emplace_back(argument.begin(), argument.size());
+        arguments.emplace_back(argument.data(), argument.size());
 
     // Handle the user-given timeout.
     std::string time_limit;

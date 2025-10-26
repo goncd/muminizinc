@@ -469,7 +469,7 @@ int help_subcommand(std::span<const std::string_view> arguments)
     if (arguments.size() > 2)
         throw BadArgument { std::format("{:s}: Too many arguments.", arguments.front()) };
 
-    const auto* const command = std::ranges::find_if(commands, [subcommand = arguments.back()](const auto& command)
+    const auto command = std::ranges::find_if(commands, [subcommand = arguments.back()](const auto& command)
         { return command.option.name == subcommand; });
 
     if (command == commands.end())
@@ -566,7 +566,7 @@ int applyall(std::span<const std::string_view> arguments)
             {
                 print_statistics(entries);
 
-                std::println("\nSaved {0:s}{2:d}{1:s} mutants to `{0:s}{3:s}{1:s}`.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size(), calculated_output_directory.native());
+                std::println("\nSaved {0:s}{2:d}{1:s} mutants to `{0:s}{3:s}{1:s}`.", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), entries.mutants().size(), logging::path_to_utf8(calculated_output_directory));
             }
         }
     }
@@ -842,7 +842,7 @@ int run(std::span<const std::string_view> arguments)
     const auto executable = std::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
 
     if (executable.empty())
-        throw BadArgument { std::format("{:s}: Could not find the executable `{:s}{:s}{:s}`. Please add it to $PATH or provide its path using `{:s}{:s}{:s}.`", arguments.front(), logging::code(logging::Color::Blue), executable_from_user.native(), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), option_compiler_path.name, logging::code(logging::Style::Reset)) };
+        throw BadArgument { std::format("{:s}: Could not find the executable `{:s}{:s}{:s}`. Please add it to $PATH or provide its path using `{:s}{:s}{:s}.`", arguments.front(), logging::code(logging::Color::Blue), logging::path_to_utf8(executable_from_user), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), option_compiler_path.name, logging::code(logging::Style::Reset)) };
 
     std::optional<std::ofstream> output_file;
 
@@ -854,7 +854,7 @@ int run(std::span<const std::string_view> arguments)
             throw BadArgument { std::format("{:s}: Could not open the output file `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), output, logging::code(logging::Style::Reset)) };
     }
 
-    const std::filesystem::path model_path_str { model_path };
+    std::filesystem::path model_path_str;
 
     MuMiniZinc::EntryResult entries;
 
@@ -863,8 +863,6 @@ int run(std::span<const std::string_view> arguments)
         if (in_memory)
         {
             std::variant<MuMiniZinc::find_mutants_args::ModelDetails, std::reference_wrapper<const std::filesystem::path>> variant;
-
-            std::filesystem::path model_path_str;
 
             if (model_path == "-"sv)
             {

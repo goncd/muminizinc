@@ -3,11 +3,14 @@
 
 #include <chrono>          // std::chrono::system_clock::now()
 #include <cstdio>          // stdout, stderr
+#include <filesystem>      // std::filesystem::path
 #include <format>          // std::format, std::format_string
 #include <memory>          // std::addressof
+#include <ostream>         // std::print (std::ostream overload)
 #include <print>           // std::print
 #include <source_location> // std::source_location, std::source_location::current
 #include <string_view>     // std::string_view
+#include <type_traits>     // std::is_same_v
 #include <utility>         // std::forward, std::to_underlying
 
 #if defined(_WIN32)
@@ -26,6 +29,18 @@
 
 namespace logging
 {
+
+inline decltype(auto) path_to_utf8(const std::filesystem::path& path)
+{
+    if constexpr (std::is_same_v<std::filesystem::path::string_type, std::string>)
+        return path.native();
+    else
+    {
+        const auto str { path.u8string() };
+
+        return std::string(reinterpret_cast<const char*>(str.data()), str.size());
+    }
+}
 
 inline bool have_color_stdout = false,
             have_color_stderr = false;

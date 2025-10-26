@@ -33,6 +33,7 @@ target_include_directories(${PROJECT_NAME_LIB} PUBLIC "${PROJECT_SOURCE_DIR}/inc
 target_include_directories(${PROJECT_NAME_LIB} PRIVATE "${CMAKE_BINARY_DIR}/include")
 
 target_compile_definitions(${PROJECT_NAME_LIB} PRIVATE BOOST_PROCESS_USE_STD_FS=1)
+target_compile_definitions(${PROJECT_NAME_LIB} PRIVATE BOOST_SYSTEM_USE_UTF8=1)
 
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCE_DIR}/src/main.cpp)
 
@@ -59,6 +60,7 @@ target_compile_options(common_options INTERFACE
             -march=native>>
     $<$<CXX_COMPILER_ID:MSVC>:
         /W4
+        /utf-8
         /d1trimfile:${CMAKE_CURRENT_SOURCE_DIR}>)
 
 target_link_options(common_options INTERFACE
@@ -71,7 +73,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE common_options)
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME_LIB})
 
 find_package(libminizinc REQUIRED)
-find_package(Boost 1.88 REQUIRED COMPONENTS process)
+find_package(Boost 1.88.0 REQUIRED COMPONENTS process)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE mzn)
 
@@ -83,6 +85,7 @@ set(libminizinc_INCLUDE_DIRS "${_fixed_includes}")
 message("libminizinc: Using includes: ${libminizinc_INCLUDE_DIRS}")
 
 include_directories(${libminizinc_INCLUDE_DIRS})
+include_directories(${Boost_INCLUDE_DIRS})
 
 list(APPEND PACKAGE_INCLUDE_DIRS "${libminizinc_INCLUDE_DIRS}/include")
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PACKAGE_INCLUDE_DIRS})
@@ -92,6 +95,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Boost::process)
 # JSON
 find_package(nlohmann_json 3.12.0 REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+include_directories(${nlohmann_json_INCLUDE_DIRS})
 
 # Testing framework
 include(CTest)
