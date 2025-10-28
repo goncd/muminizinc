@@ -105,7 +105,7 @@ constexpr Option option_in_memory {
 constexpr Option option_color {
     .name = "--color",
     .short_name = "-c",
-    .help = R"(Enables color output with "true" or disables it with "false". By default it's automatic)",
+    .help = "`true` enables and `false` disables color output, automatic by default",
 };
 
 constexpr Option option_operator {
@@ -189,8 +189,8 @@ constexpr std::array applyall_parameters {
     option_help,
     option_color,
     option_operator,
-    option_json,
-    option_include
+    option_include,
+    option_json
 };
 
 constexpr std::array run_parameters {
@@ -329,13 +329,13 @@ constexpr Command command_color_option {
 };
 
 constexpr std::array commands {
-    command_applyall,
     command_analyse,
     command_hidden_analyze,
+    command_applyall,
     command_run,
+    command_clean,
     command_normalise,
     command_hidden_normalize,
-    command_clean,
     command_hidden_clear,
     command_help,
     command_help_option,
@@ -386,7 +386,7 @@ void print_statistics(const MuMiniZinc::EntryResult& entries)
 
     std::println("{:s}{:s}Operator statistics{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
     for (auto [n, stats] : entries.statistics() | std::views::enumerate)
-        std::println("- {2:s}\n    - Amount:     {0:s}{3:d}{1:s}\n    - Occurrences: {0:s}{4:d}{1:s}", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), MuMiniZinc::available_operators[static_cast<std::size_t>(n)].first, stats.first, stats.second);
+        std::println("- {2:s}\n  - Amount:       {0:s}{3:d}{1:s}\n  - Occurrences:  {0:s}{4:d}{1:s}", logging::code(logging::Color::Blue), logging::code(logging::Style::Reset), MuMiniZinc::available_operators[static_cast<std::size_t>(n)].first, stats.first, stats.second);
 }
 
 template<typename Exception>
@@ -445,15 +445,15 @@ int help_subcommand(const Command& command)
 
     if (largest_option != command.options.end())
     {
-        const auto lagest_option_length = largest_option->name.length();
+        const auto largest_option_length = largest_option->name.length() - (largest_option->short_name.empty() ? 4 : 0);
 
         std::println("\n{:s}{:s}Options{:s}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset));
         for (const auto& option : command.options)
         {
             if (option.short_name.empty())
-                std::println("  {:<{}}  {}", option.name, lagest_option_length, option.help);
+                std::println("  {:<{}}  {}", option.name, largest_option_length + 4, option.help);
             else
-                std::println("  {}, {:<{}}  {}", option.short_name, option.name, lagest_option_length - (largest_option->short_name.empty() ? 4 : 0), option.help);
+                std::println("  {}, {:<{}}  {}", option.short_name, option.name, largest_option_length, option.help);
         }
     }
 

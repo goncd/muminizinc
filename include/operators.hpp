@@ -69,6 +69,8 @@ private:
 
     std::span<const std::pair<std::string, std::string>> m_detected_enums;
 
+    std::uint64_t m_location_counter {};
+
     void perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name);
     void perform_mutation_unop(MiniZinc::BinOp* op, std::string_view operator_name);
     void perform_mutation_unop(MiniZinc::Call* call, std::string_view operator_name);

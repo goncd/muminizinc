@@ -1,4 +1,4 @@
-#define BOOST_TEST_MODULE test_mutation_model
+#define BOOST_TEST_MODULE test_mutation
 #include <boost/test/unit_test.hpp>
 
 #include <array>      // std::array
@@ -30,7 +30,7 @@ BOOST_AUTO_TEST_CASE(empty_model)
 
 BOOST_AUTO_TEST_CASE(empty_mutant)
 {
-    constexpr auto model_filename { "relational.mzn" };
+    constexpr auto model_filename { "aor.mzn" };
     const auto model_path { data_path / model_filename };
     const auto mutant_folder_path { data_path / "empty-mutant-test" };
     const auto normalized_model_path { mutant_folder_path / model_filename };
@@ -78,7 +78,7 @@ BOOST_AUTO_TEST_CASE(empty_mutant)
 
 BOOST_AUTO_TEST_CASE(invalid_file)
 {
-    constexpr auto model_filename { "relational.mzn" };
+    constexpr auto model_filename { "aor.mzn" };
     const auto model_path { data_path / model_filename };
     const auto mutant_folder_path { data_path / "invalid-file-test" };
 
@@ -142,7 +142,7 @@ BOOST_AUTO_TEST_CASE(no_mutants_detected)
 
 BOOST_AUTO_TEST_CASE(outdated_mutant)
 {
-    constexpr auto model_filename { "relational.mzn" };
+    constexpr auto model_filename { "aor.mzn" };
     const auto mutant_folder_path { data_path / "outdated-mutant-test" };
     const auto model_path { data_path / model_filename };
     const auto normalized_model_path { mutant_folder_path / model_filename };
@@ -202,7 +202,7 @@ BOOST_AUTO_TEST_CASE(unknown_operator)
 BOOST_AUTO_TEST_CASE(unknown_mutant)
 {
     constexpr std::array unknown_mutant { ascii_ci_string_view { "this_mutant_does_not_exist" } };
-    const auto model_path { data_path / "relational.mzn" };
+    const auto model_path { data_path / "aor.mzn" };
 
     const MuMiniZinc::find_mutants_args find_parameters {
         .model = model_path,
@@ -228,4 +228,20 @@ BOOST_AUTO_TEST_CASE(unknown_mutant)
     };
 
     BOOST_REQUIRE_THROW(MuMiniZinc::run_mutants(run_parameters), MuMiniZinc::UnknownMutant);
+}
+
+BOOST_AUTO_TEST_CASE(no_detection)
+{
+    const auto model_path { data_path / "aor.mzn" };
+
+    const MuMiniZinc::find_mutants_args find_parameters {
+        .model = model_path,
+        .allowed_operators = {},
+        .include_path = {},
+        .run_type = MuMiniZinc::find_mutants_args::RunType::NoDetection
+    };
+
+    const auto entries = MuMiniZinc::find_mutants(find_parameters);
+
+    BOOST_REQUIRE(entries.mutants().empty());
 }

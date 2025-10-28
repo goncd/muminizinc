@@ -3,14 +3,14 @@ find_package(Boost 1.88.0 REQUIRED COMPONENTS unit_test_framework)
 set(TEST_SOURCES
     test_arguments.cpp
     test_execution.cpp
-    test_mutant_arithmetic.cpp
-    test_mutant_boolean.cpp
-    test_mutant_call_argument_swap.cpp
-    test_mutant_call_swap.cpp
-    test_mutant_set.cpp
-    test_mutant_relational.cpp
-    test_mutant_unary.cpp
-    test_mutation_model.cpp
+    test_mutation.cpp
+    test_operator_aor.cpp
+    test_operator_cor.cpp
+    test_operator_fas.cpp
+    test_operator_fcr.cpp
+    test_operator_ror.cpp
+    test_operator_sor.cpp
+    test_operator_uod.cpp
 )
 
 foreach(test_file ${TEST_SOURCES})

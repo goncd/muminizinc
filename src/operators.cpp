@@ -1,9 +1,10 @@
 #include <operators.hpp>
 
-#include <algorithm>   // std::ranges::equal, std::ranges::next_permutation, std::ranges::sort
-#include <array>       // std::array
-#include <cstdint>     // std::uint64_t
-#include <format>      // std::format
+#include <algorithm> // std::ranges::equal, std::ranges::next_permutation, std::ranges::sort
+#include <array>     // std::array
+#include <cstdint>   // std::uint64_t
+#include <format>    // std::format
+#include <ranges>
 #include <span>        // std::span
 #include <string_view> // std::string_view
 #include <utility>     // std::pair
@@ -107,6 +108,9 @@ void Mutator::vBinOp(MiniZinc::BinOp* binOp)
 {
     logd("vBinOP: Detected operator {}", binOp->opToString().c_str());
 
+    const auto currently_detected_mutants { m_entries.mutants().size() };
+    ++m_location_counter;
+
     if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { unary_operators_name }))
         perform_mutation_unop(binOp, unary_operators_name);
 
@@ -127,11 +131,17 @@ void Mutator::vBinOp(MiniZinc::BinOp* binOp)
         logd("vBinOp: Undetected mutation type");
     else if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { operator_name }))
         perform_mutation(binOp, operators, operator_name);
+
+    if (currently_detected_mutants == m_entries.mutants().size())
+        --m_location_counter;
 }
 
 void Mutator::vCall(MiniZinc::Call* call)
 {
     logd("vCall: Detected call to {}", call->id().c_str());
+
+    const auto currently_detected_mutants { m_entries.mutants().size() };
+    ++m_location_counter;
 
     if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { unary_operators_name }))
         perform_mutation_unop(call, unary_operators_name);
@@ -139,10 +149,16 @@ void Mutator::vCall(MiniZinc::Call* call)
     if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { call_swap_name }))
         perform_call_swap_mutation(call);
 
-    if (std::ranges::contains(calls, call->id()) && (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { call_name })))
-        perform_mutation(call, calls, call_name);
+    if (std::ranges::contains(calls, call->id()))
+    {
+        if (m_allowed_operators.empty() || std::ranges::contains(m_allowed_operators, ascii_ci_string_view { call_name }))
+            perform_mutation(call, calls, call_name);
+    }
     else
         logd("vCall: Unhandled call operation");
+
+    if (currently_detected_mutants == m_entries.mutants().size())
+        --m_location_counter;
 }
 
 void Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name)
@@ -172,7 +188,7 @@ void Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::Bi
 
         logd("Mutating to {}", op->opToString().c_str());
 
-        m_entries.save_model(m_model, operator_name, occurrence_id++, m_detected_enums);
+        m_entries.save_model(m_model, operator_name, m_location_counter, ++occurrence_id, m_detected_enums);
     }
 
     // Go back to the original for the next iteration.
@@ -184,27 +200,23 @@ void Mutator::perform_mutation_unop(MiniZinc::BinOp* op, std::string_view operat
     auto* const lhs = op->lhs();
     auto* const rhs = op->rhs();
 
-    std::uint64_t occurrence_id {};
-
     if (auto* unop = MiniZinc::Expression::dynamicCast<MiniZinc::UnOp>(lhs))
     {
         op->lhs(unop->e());
-        m_entries.save_model(m_model, operator_name, occurrence_id++, m_detected_enums);
+        m_entries.save_model(m_model, operator_name, m_location_counter, 1, m_detected_enums);
         op->lhs(lhs);
     }
 
     if (auto* unop = MiniZinc::Expression::dynamicCast<MiniZinc::UnOp>(rhs))
     {
         op->rhs(unop->e());
-        m_entries.save_model(m_model, operator_name, occurrence_id++, m_detected_enums);
+        m_entries.save_model(m_model, operator_name, m_location_counter, 1, m_detected_enums);
         op->rhs(rhs);
     }
 }
 
 void Mutator::perform_mutation_unop(MiniZinc::Call* call, std::string_view operator_name)
 {
-    std::uint64_t occurrence_id {};
-
     for (unsigned int i {}; i < call->argCount(); ++i)
     {
         auto* const original_element = call->arg(i);
@@ -212,7 +224,7 @@ void Mutator::perform_mutation_unop(MiniZinc::Call* call, std::string_view opera
         if (auto* unop = MiniZinc::Expression::dynamicCast<MiniZinc::UnOp>(original_element))
         {
             call->arg(i, unop->e());
-            m_entries.save_model(m_model, operator_name, occurrence_id++, m_detected_enums);
+            m_entries.save_model(m_model, operator_name, m_location_counter, 1, m_detected_enums);
             call->arg(i, original_element);
         }
     }
@@ -233,7 +245,7 @@ void Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::A
 
         call->id(candidate_call);
 
-        m_entries.save_model(m_model, operator_name, occurrence_id++, m_detected_enums);
+        m_entries.save_model(m_model, operator_name, m_location_counter, ++occurrence_id, m_detected_enums);
     }
 
     call->id(original_call);
@@ -262,7 +274,7 @@ void Mutator::perform_call_swap_mutation(MiniZinc::Call* call)
 
         call->args(permutation);
 
-        m_entries.save_model(m_model, call_swap_name, occurrence_id++, m_detected_enums);
+        m_entries.save_model(m_model, call_swap_name, m_location_counter, ++occurrence_id, m_detected_enums);
 
     } while (std::ranges::next_permutation(permutation).found);
 

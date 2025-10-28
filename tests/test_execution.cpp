@@ -84,17 +84,17 @@ void perform_test(const std::filesystem::path& path, std::span<const ascii_ci_st
 
 }
 
-BOOST_AUTO_TEST_CASE(arithmetic)
+BOOST_AUTO_TEST_CASE(aor)
 {
     constexpr std::array operator_to_test { ascii_ci_string_view { "AOR" } };
-    const auto path { data_path / "arithmetic.mzn" };
+    const auto path { data_path / "aor.mzn" };
 
-    const std::array arithmetic_data_files {
-        "data/arithmetic-1.dzn"s,
-        "data/arithmetic-2.dzn"s
+    const std::array aor_data_files {
+        "data/aor-1.dzn"s,
+        "data/aor-2.dzn"s
     };
 
-    constexpr std::array arithmetic_results {
+    constexpr std::array aor_results {
         0_status,
         1_status,
         1_status,
@@ -109,16 +109,16 @@ BOOST_AUTO_TEST_CASE(arithmetic)
         2_status,
     };
 
-    perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results);
-    perform_test(path, operator_to_test, arithmetic_data_files, arithmetic_results, data_path / "arithmetic-execution");
+    perform_test(path, operator_to_test, aor_data_files, aor_results);
+    perform_test(path, operator_to_test, aor_data_files, aor_results, data_path / "aor-execution");
 }
 
-BOOST_AUTO_TEST_CASE(boolean)
+BOOST_AUTO_TEST_CASE(cor)
 {
     constexpr std::array operator_to_test { ascii_ci_string_view { "COR" } };
-    const auto path { data_path / "boolean.mzn" };
+    const auto path { data_path / "cor.mzn" };
 
-    constexpr std::array boolean_results {
+    constexpr std::array cor_results {
         0_status,
         0_status,
         0_status,
@@ -126,16 +126,16 @@ BOOST_AUTO_TEST_CASE(boolean)
         1_status
     };
 
-    perform_test(path, operator_to_test, {}, boolean_results);
-    perform_test(path, operator_to_test, {}, boolean_results, data_path / "boolean-execution");
+    perform_test(path, operator_to_test, {}, cor_results);
+    perform_test(path, operator_to_test, {}, cor_results, data_path / "cor-execution");
 }
 
-BOOST_AUTO_TEST_CASE(call_argument_swap)
+BOOST_AUTO_TEST_CASE(fas)
 {
     constexpr std::array operator_to_test { ascii_ci_string_view { "FAS" } };
-    const auto path { data_path / "call_argument_swap.mzn" };
+    const auto path { data_path / "fas.mzn" };
 
-    constexpr std::array call_argument_swap_results {
+    constexpr std::array fas_results {
         2_status,
         2_status,
         2_status,
@@ -143,35 +143,35 @@ BOOST_AUTO_TEST_CASE(call_argument_swap)
         2_status,
     };
 
-    perform_test(path, operator_to_test, {}, call_argument_swap_results);
-    perform_test(path, operator_to_test, {}, call_argument_swap_results, data_path / "call_argument_swap-execution");
+    perform_test(path, operator_to_test, {}, fas_results);
+    perform_test(path, operator_to_test, {}, fas_results, data_path / "fas-execution");
 }
 
-BOOST_AUTO_TEST_CASE(call_swap)
+BOOST_AUTO_TEST_CASE(fcr)
 {
     constexpr std::array operator_to_test { ascii_ci_string_view { "FCR" } };
-    const auto path { data_path / "call_swap.mzn" };
+    const auto path { data_path / "fcr.mzn" };
 
-    constexpr std::array call_swap_results {
+    constexpr std::array fcr_results {
         0_status,
         1_status,
     };
 
-    perform_test(path, operator_to_test, {}, call_swap_results);
-    perform_test(path, operator_to_test, {}, call_swap_results, data_path / "call_swap-execution");
+    perform_test(path, operator_to_test, {}, fcr_results);
+    perform_test(path, operator_to_test, {}, fcr_results, data_path / "fcr-execution");
 }
 
-BOOST_AUTO_TEST_CASE(relational)
+BOOST_AUTO_TEST_CASE(ror)
 {
     constexpr std::array operator_to_test { ascii_ci_string_view { "ROR" } };
-    const auto path { data_path / "relational.mzn" };
+    const auto path { data_path / "ror.mzn" };
 
-    const std::array relational_data_files {
-        "data/relational-1.dzn"s,
-        "data/relational-2.dzn"s
+    const std::array ror_data_files {
+        "data/ror-1.dzn"s,
+        "data/ror-2.dzn"s
     };
 
-    constexpr std::array relational_results {
+    constexpr std::array ror_results {
         0_status,
         0_status,
         1_status,
@@ -184,41 +184,41 @@ BOOST_AUTO_TEST_CASE(relational)
         1_status
     };
 
-    perform_test(path, operator_to_test, relational_data_files, relational_results);
-    perform_test(path, operator_to_test, relational_data_files, relational_results, data_path / "relational-execution");
+    perform_test(path, operator_to_test, ror_data_files, ror_results);
+    perform_test(path, operator_to_test, ror_data_files, ror_results, data_path / "ror-execution");
 }
 
-BOOST_AUTO_TEST_CASE(set)
+BOOST_AUTO_TEST_CASE(sor)
 {
     constexpr std::array operator_to_test { ascii_ci_string_view { "SOR" } };
-    const auto path { data_path / "set.mzn" };
+    const auto path { data_path / "sor.mzn" };
 
-    constexpr std::array set_results {
+    constexpr std::array sor_results {
         1_status,
         1_status,
         0_status,
         1_status
     };
 
-    perform_test(path, operator_to_test, {}, set_results);
-    perform_test(path, operator_to_test, {}, set_results, data_path / "set-execution");
+    perform_test(path, operator_to_test, {}, sor_results);
+    perform_test(path, operator_to_test, {}, sor_results, data_path / "sor-execution");
 }
 
-BOOST_AUTO_TEST_CASE(unary)
+BOOST_AUTO_TEST_CASE(uod)
 {
     constexpr std::array operator_to_test { ascii_ci_string_view { "UOD" } };
-    const auto path { data_path / "unary.mzn" };
+    const auto path { data_path / "uod.mzn" };
 
-    const std::array unary_data_files {
-        "data/unary-1.dzn"s,
+    const std::array uod_data_files {
+        "data/uod-1.dzn"s,
     };
 
-    constexpr std::array unary_results {
+    constexpr std::array uod_results {
         0_status,
         0_status,
         1_status,
     };
 
-    perform_test(path, operator_to_test, unary_data_files, unary_results);
-    perform_test(path, operator_to_test, unary_data_files, unary_results, data_path / "unary-execution");
+    perform_test(path, operator_to_test, uod_data_files, uod_results);
+    perform_test(path, operator_to_test, uod_data_files, uod_results, data_path / "uod-execution");
 }

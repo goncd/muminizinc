@@ -154,7 +154,7 @@ constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::str
 namespace MuMiniZinc
 {
 
-void EntryResult::save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums)
+void EntryResult::save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t location_id, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums)
 {
     if (model == nullptr)
         throw std::runtime_error { "There is no model to print." };
@@ -175,9 +175,10 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
 
     const auto operator_id = static_cast<std::size_t>(std::distance(available_operators.begin(), it));
 
+    m_statistics[operator_id].first++;
     m_statistics[operator_id].second = std::max(m_statistics[operator_id].second, occurrence_id);
 
-    auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_model_name, SEPARATOR, operator_name, SEPARATOR, m_statistics[operator_id].first++, SEPARATOR, occurrence_id);
+    auto mutant = std::format("{:s}{:c}{:s}{:c}{:d}{:c}{:d}", m_model_name, SEPARATOR, operator_name, SEPARATOR, location_id, SEPARATOR, occurrence_id);
     m_mutants.emplace_back(std::move(mutant), std::move(output));
 }
 

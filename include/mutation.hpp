@@ -83,7 +83,7 @@ class EntryResult
     friend void run_mutants(const run_mutants_args& parameters);
     friend class Mutator;
 
-    void save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums);
+    void save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t location_id, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums);
 
 public:
     [[nodiscard]] constexpr std::span<const Entry> mutants() const noexcept { return m_mutants; }
