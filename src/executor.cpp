@@ -29,7 +29,7 @@
 #include <boost/utility/string_view.hpp> // boost::string_view
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <logging.hpp>                 // logging::code, logging::Style, logging::output
+#include <logging.hpp>                 // logging::code, logging::color_support::get, logging::Style, logging::output
 #include <mutation.hpp>                // MuMiniZinc::Entry
 
 namespace
@@ -93,7 +93,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
             {
                 logging_output.print("{:s}{:s}Progress{:s}: {:d} of {:g} execution{:s}({:0.2f}%)", logging::carriage_return(), logging::code(logging::Style::Bold), logging::code(logging::Style::Reset), completed_tasks, total_tasks, total_tasks > 1 ? "s " : " ", static_cast<double>(completed_tasks) / total_tasks * 100);
 
-                if (logging::have_color_output())
+                if (logging::color_support::get())
                     logging_output.get_stream()->flush();
                 else
                     logging_output.println();
@@ -163,7 +163,7 @@ void check_version(boost::asio::io_context& ctx, const std::filesystem::path& pa
     if (process.exit_code() != EXIT_SUCCESS)
         throw MuMiniZinc::BadVersion { "Could not verify the compiler's version: The compiler exit code is not success." };
 
-    if (!output.contains(MuMiniZinc::get_version()))
+    if (!output.contains(MuMiniZinc::minizinc_version_full))
         throw MuMiniZinc::BadVersion { "Compiler version mismatch." };
 }
 

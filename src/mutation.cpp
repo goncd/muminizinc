@@ -33,7 +33,7 @@
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
 #include <executor.hpp>                // MuMiniZinc::execute_mutants, MuMiniZinc::execution_args
 #include <logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
-#include <operators.hpp>               // MuMiniZinc::throw_if_invalid_operators
+#include <operators.hpp>               // MuMiniZinc::available_operators
 
 namespace
 {
@@ -149,6 +149,26 @@ constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::str
     }
 };
 
+void throw_if_invalid_operators(std::span<const ascii_ci_string_view> allowed_operators)
+{
+    for (const auto mutant : allowed_operators)
+    {
+        bool found = false;
+
+        for (const auto& [name, _] : MuMiniZinc::available_operators)
+        {
+            if (mutant == name)
+            {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+            throw MuMiniZinc::UnknownOperator { std::format("Unknown operator `{:s}{:s}{:s}`.", logging::code(logging::Color::Blue), mutant, logging::code(logging::Style::Reset)) };
+    }
+}
+
 }
 
 namespace MuMiniZinc
@@ -197,7 +217,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
 {
     throw_if_invalid_operators(parameters.allowed_operators);
 
-    auto [model_name, model_contents] = std::visit(get_model, parameters.model);
+    const auto [model_name, model_contents] = std::visit(get_model, parameters.model);
 
     if (model_contents.empty())
         throw EmptyFile { "Empty file given. Nothing to do." };

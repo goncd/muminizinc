@@ -100,3 +100,16 @@ include_directories(${nlohmann_json_INCLUDE_DIRS})
 # Testing framework
 include(CTest)
 add_subdirectory(tests)
+
+# Doxygen
+find_package(Doxygen OPTIONAL_COMPONENTS dot)
+
+if (Doxygen_FOUND)
+    set(DOXYGEN_HTML_COLORSTYLE "TOGGLE")
+    set(DOXYGEN_USE_MDFILE_AS_MAINPAGE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+
+    doxygen_add_docs(
+        docs 
+        ${PROJECT_SOURCE_DIR}
+    )
+endif()

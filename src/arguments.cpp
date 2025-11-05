@@ -356,7 +356,7 @@ nlohmann::json get_statistics_json(const MuMiniZinc::EntryResult& entries)
         | std::views::enumerate
         | std::views::transform([](const auto& item)
             {
-                          auto [index, stats_pair] = item;
+                          auto& [index, stats_pair] = item;
                           return nlohmann::json{
                               {"name", MuMiniZinc::available_operators[static_cast<std::size_t>(index)].first},
                               {"amount", stats_pair.first},
@@ -936,7 +936,7 @@ int run(std::span<const std::string_view> arguments)
     }
     catch (const MuMiniZinc::BadVersion& bad_version)
     {
-        throw MuMiniZinc::BadVersion { std::format("{:s}\n\nTo disable the compiler version check, use the option `{:s}{:s}{:s}`. The expected version number is {:s}.", bad_version.what(), logging::code(logging::Color::Blue), option_ignore_version_check.name, logging::code(logging::Style::Reset), MuMiniZinc::get_version()) };
+        throw MuMiniZinc::BadVersion { std::format("{:s}\n\nTo disable the compiler version check, use the option `{:s}{:s}{:s}`. The expected version number is {:s}.", bad_version.what(), logging::code(logging::Color::Blue), option_ignore_version_check.name, logging::code(logging::Style::Reset), MuMiniZinc::minizinc_version) };
     }
     catch (const MuMiniZinc::OutdatedMutant& outdated_mutant)
     {
@@ -1102,7 +1102,7 @@ int clean(std::span<const std::string_view> arguments)
 
 int print_version()
 {
-    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}", MuMiniZinc::config::project_fancy_name, MuMiniZinc::config::project_version, MuMiniZinc::get_version());
+    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}", MuMiniZinc::config::project_fancy_name, MuMiniZinc::config::project_version, MuMiniZinc::minizinc_version);
 
     if constexpr (MuMiniZinc::config::is_debug_build)
         std::println("\nDebug build.");
@@ -1148,7 +1148,7 @@ int parse_arguments(std::span<const char* const> argv)
             else
                 throw BadArgument { std::format(R"({:s}: Unknown value `{:s}{:s}{:s}`. Valid values are "{:s}" and "{:s}".)", option_color.name, logging::code(logging::Color::Blue), value, logging::code(logging::Style::Reset), value_true, value_false) };
 
-            logging::have_color_stdout = logging::have_color_stderr = should_have_color;
+            logging::color_support::set(should_have_color, should_have_color);
 
             ++i;
         }

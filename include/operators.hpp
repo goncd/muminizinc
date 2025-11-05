@@ -10,6 +10,10 @@
 
 #include <case_insensitive_string.hpp> // ascii_ci_string_view
 
+/**
+ * @file
+ * @brief The mutation part.
+ */
 namespace MuMiniZinc
 {
 
@@ -17,6 +21,12 @@ class EntryResult;
 
 using namespace std::string_view_literals;
 
+/**
+ * The list of available operators.
+ *
+ * The first element of the pair represents the short name.
+ * The second element of the pair is a short description of the operator.
+ */
 inline constexpr std::array available_operators {
     std::pair { "ROR"sv, "Relational operator replacement"sv },
     std::pair { "AOR"sv, "Arithmetic operator replacement"sv },
@@ -27,14 +37,9 @@ inline constexpr std::array available_operators {
     std::pair { "FAS"sv, "Function call argument swap"sv }
 };
 
-class UnknownOperator : public std::runtime_error
-{
-    using std::runtime_error::runtime_error;
-};
-
-void throw_if_invalid_operators(std::span<const ascii_ci_string_view> allowed_operators);
-
-/*
+/**
+ * The expression visitor used for generating mutants.
+ * 
  * This actually does not override anything because MiniZinc::EVisitor does not have
  * any virtual members, but we'll follow the convention. This is just static dispatching.
  *
@@ -53,11 +58,14 @@ void throw_if_invalid_operators(std::span<const ascii_ci_string_view> allowed_op
 class Mutator : public MiniZinc::EVisitor
 {
 public:
+    /** Constructs a Mutator. */
     constexpr Mutator(const MiniZinc::Model* model, std::span<const ascii_ci_string_view> m_allowed_operators, MuMiniZinc::EntryResult& entries, std::span<const std::pair<std::string, std::string>> detected_enums) noexcept :
         m_model { model }, m_allowed_operators { m_allowed_operators }, m_entries { entries }, m_detected_enums { detected_enums } { }
 
+    /** Visitor for binary operators. */
     void vBinOp(MiniZinc::BinOp* binOp);
 
+    /** Visitor for calls to functions. */
     void vCall(MiniZinc::Call* call);
 
 private:
@@ -72,9 +80,9 @@ private:
     std::uint64_t m_location_counter {};
 
     void perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name);
-    void perform_mutation_unop(MiniZinc::BinOp* op, std::string_view operator_name);
-    void perform_mutation_unop(MiniZinc::Call* call, std::string_view operator_name);
-    void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls, std::string_view operator_name);
+    void perform_mutation_unop(MiniZinc::BinOp* op);
+    void perform_mutation_unop(MiniZinc::Call* call);
+    void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls);
     void perform_call_swap_mutation(MiniZinc::Call* call);
 };
 

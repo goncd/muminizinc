@@ -7,13 +7,13 @@
 #include <minizinc/exception.hh> // MiniZinc::Exception
 
 #include <arguments.hpp> // parse_arguments
-#include <logging.hpp>   // logging::check_color_support, logging::code, logging::Color, logging::OutputType,logging::Style,
+#include <logging.hpp>   // logging::color_support::check, logging::code, logging::Color, logging::OutputType,logging::Style,
 
 int main(int argc, const char** argv)
 {
     try
     {
-        logging::check_color_support();
+        logging::color_support::check();
 
         return parse_arguments(std::span { argv, argv + argc });
     }
