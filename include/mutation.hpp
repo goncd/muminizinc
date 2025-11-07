@@ -74,6 +74,9 @@ struct Entry
 
     constexpr Entry() noexcept = default;
 
+    /** Default three-way comparison. */
+    [[nodiscard]] constexpr auto operator<=>(const Entry&) const noexcept = default;
+
     /**
      * The result of this entry compared to the original mutant.
      * This is filled by MuMiniZinc::execute_mutants.
@@ -108,7 +111,7 @@ struct Entry
 class EntryResult
 {
     std::vector<Entry> m_mutants;
-    std::array<std::pair<std::uint64_t, std::uint64_t>, available_operators.size()> m_statistics;
+    std::array<std::pair<std::uint64_t, std::uint64_t>, available_operators.size()> m_statistics {};
 
     std::string m_model_name;
     std::string m_model_contents;
@@ -121,6 +124,9 @@ class EntryResult
     void save_model(const MiniZinc::Model* model, std::string_view operator_name, std::uint64_t location_id, std::uint64_t occurrence_id, std::span<const std::pair<std::string, std::string>> detected_enums);
 
 public:
+    /** Default three-way comparison. */
+    [[nodiscard]] constexpr auto operator<=>(const EntryResult&) const noexcept = default;
+
     /** The stored mutants. */
     [[nodiscard]] constexpr std::span<const Entry> mutants() const noexcept { return m_mutants; }
 
@@ -281,7 +287,7 @@ struct run_mutants_args
 [[nodiscard]] EntryResult find_mutants(const find_mutants_args& parameters);
 
 /**
- * Retrieves the mutants from the filesystem.
+ * Retrieves the mutants from the filesystem. This will not retrieve the mutation operators' statistics.
  *
  * @param parameters the parameters.
  *
@@ -291,6 +297,7 @@ struct run_mutants_args
 
 /**
  * Dumps the mutants and the normalized model to the filesystem.
+ * This will not dump the mutation operators' statistics.
  *
  * @param entries the mutants and the normalized model to dump.
  * @param directory the directory to dump the mutants to.

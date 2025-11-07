@@ -1,15 +1,15 @@
-#define BOOST_TEST_MODULE test_mutant_sor
+#define BOOST_TEST_MODULE test_operator_sor
 #include <boost/test/unit_test.hpp>
 
 #include <array>       // std::array
-#include <filesystem>  // std::filesystem::path
 #include <string_view> // std::string_view
 
-#include "test_operator_utils.hpp" // perform_test_operator
+#include "test_operator_utils.hpp" // perform_test_execution, perform_test_operator, Status
 
 namespace
 {
-inline constexpr std::string_view allowed_operator { "SOR" };
+constexpr std::array operator_to_test { ascii_ci_string_view { "SOR" } };
+inline const auto path { data_path / "sor.mzn" };
 }
 
 BOOST_AUTO_TEST_CASE(sor)
@@ -43,5 +43,17 @@ constraint b intersect c==a;
 )"sv
     };
 
-    perform_test_operator<allowed_operator>("data/sor.mzn", expected_mutants, 3);
+    perform_test_operator<operator_to_test.front()>(path, expected_mutants, 3);
+}
+
+BOOST_AUTO_TEST_CASE(sor_execution)
+{
+    constexpr std::array results {
+        Status::Dead,
+        Status::Dead,
+        Status::Alive,
+        Status::Dead
+    };
+
+    perform_test_execution(path, operator_to_test, {}, results, data_path / "sor-execution");
 }

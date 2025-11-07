@@ -2,7 +2,6 @@ find_package(Boost 1.88.0 REQUIRED COMPONENTS unit_test_framework)
 
 set(TEST_SOURCES
     test_arguments.cpp
-    test_execution.cpp
     test_mutation.cpp
     test_operator_aor.cpp
     test_operator_cor.cpp

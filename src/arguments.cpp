@@ -854,14 +854,14 @@ int run(std::span<const std::string_view> arguments)
             throw BadArgument { std::format("{:s}: Could not open the output file `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), output, logging::code(logging::Style::Reset)) };
     }
 
-    std::filesystem::path model_path_str;
-
     MuMiniZinc::EntryResult entries;
 
     try
     {
         if (in_memory)
         {
+            std::filesystem::path model_path_str;
+
             std::variant<MuMiniZinc::find_mutants_args::ModelDetails, std::reference_wrapper<const std::filesystem::path>> variant;
 
             if (model_path == "-"sv)
@@ -889,6 +889,7 @@ int run(std::span<const std::string_view> arguments)
         else
         {
             const auto calculated_output_directory = output_directory.empty() ? MuMiniZinc::get_path_from_model_path(model_path) : std::filesystem::path { output_directory };
+            const std::filesystem::path model_path_str { model_path };
 
             const MuMiniZinc::retrieve_mutants_args parameters {
                 .model_path = model_path_str,

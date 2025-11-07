@@ -300,33 +300,27 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
     throw_if_invalid_operators(parameters.allowed_operators);
 
     if (!std::filesystem::is_directory(parameters.directory_path))
-        throw IOError { std::format(R"(Folder "{:s}" does not exist.)", logging::path_to_utf8(parameters.directory_path)) };
-
-    // Insert the original model first.
-    const std::ifstream original_model_stream { parameters.model_path };
-    std::stringstream buffer;
-    buffer << original_model_stream.rdbuf();
-
-    if (original_model_stream.bad())
-        throw IOError { std::format(R"(Could not open the file "{:s}".)", logging::path_to_utf8(parameters.model_path)) };
+        throw IOError { std::format("The directory `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), logging::path_to_utf8(parameters.model_path), logging::code(logging::Style::Reset)) };
 
     if (!parameters.model_path.has_stem())
-        throw IOError { "Could not determine the filename without extension of the model." };
+        throw IOError { "Could not determine the filename without extension of the model. (retrieve)" };
+
+    if (!std::filesystem::exists(parameters.model_path))
+        throw IOError { std::format("The path `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), logging::path_to_utf8(parameters.model_path), logging::code(logging::Style::Reset)) };
 
     EntryResult entry_result;
-
     entry_result.m_model_name = parameters.model_path.stem().generic_string();
-    entry_result.m_model_contents = std::move(buffer).str();
 
     std::error_code last_write_ec {};
     const auto last_write_time_original = parameters.check_model_last_modified_time ? std::filesystem::last_write_time(parameters.model_path, last_write_ec) : std::filesystem::file_time_type::min();
 
-    // Insert all the mutants found in the folder, but skip the original model.
+    // Insert all the mutants found in the directory, including the normalized model.
     for (const auto& entry : std::filesystem::directory_iterator { parameters.directory_path })
     {
         auto stem = get_stem_if_valid(entry_result.m_model_name, entry);
+        const auto is_normalized_model = stem == entry_result.m_model_name;
 
-        if (stem.empty())
+        if (!is_normalized_model && stem.empty())
             throw InvalidFile { "One or more elements inside the selected path are not models or mutants from the specified model. Can't run the mutants." };
 
         if (last_write_time_original > std::filesystem::file_time_type::min() && !last_write_ec)
@@ -337,10 +331,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
                 throw OutdatedMutant { "The original model is newer than the mutants, so they might be outdated. Please re-analyse the original model." };
         }
 
-        if (stem == entry_result.m_model_name)
-            continue;
-
-        if (!parameters.allowed_operators.empty())
+        if (!parameters.allowed_operators.empty() && !is_normalized_model)
         {
             ascii_ci_string_view entry_view { stem };
 
@@ -352,7 +343,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
                 continue;
         }
 
-        if (!parameters.allowed_mutants.empty() && !std::ranges::contains(parameters.allowed_mutants, ascii_ci_string_view { stem }))
+        if (!parameters.allowed_mutants.empty() && !is_normalized_model && !std::ranges::contains(parameters.allowed_mutants, ascii_ci_string_view { stem }))
             continue;
 
         const std::ifstream ifstream { entry.path() };
@@ -367,7 +358,10 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
         if (str.empty())
             throw EmptyFile { std::format("The file `{:s}{:s}{:s}` is empty.", code(logging::Color::Blue), logging::path_to_utf8(entry.path()), code(logging::Style::Reset)) };
 
-        entry_result.m_mutants.emplace_back(std::move(stem), std::move(str));
+        if (is_normalized_model)
+            entry_result.m_model_contents = std::move(str);
+        else
+            entry_result.m_mutants.emplace_back(std::move(stem), std::move(str));
     }
 
     return entry_result;
