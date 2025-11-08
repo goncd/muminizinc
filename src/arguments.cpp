@@ -27,12 +27,12 @@
 
 #include <nlohmann/json.hpp> // nlohmann::json
 
-#include <build/config.hpp>            // config::project_version
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <executor.hpp>                // BadVersion
-#include <logging.hpp>                 // logging::code, logging::Color, logging::Style
-#include <mutation.hpp>                // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::EntryResult, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::get_path_from_model_path, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
-#include <operators.hpp>               // MuMiniZinc::available_operators
+#include <muminizinc/build/config.hpp>            // build::project_version
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/executor.hpp>                // BadVersion
+#include <muminizinc/logging.hpp>                 // logging::code, logging::Color, logging::Style
+#include <muminizinc/mutation.hpp>                // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::EntryResult, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::get_path_from_model_path, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
+#include <muminizinc/operators.hpp>               // MuMiniZinc::available_operators
 
 namespace
 {
@@ -417,9 +417,9 @@ int print_help()
         { return !command.is_option() ? std::string_view::size_type {} : command.option.name.length(); })
                                                ->option.name.length();
 
-    std::println("{:s} is a mutation test tool for MiniZinc models.", MuMiniZinc::config::project_fancy_name);
+    std::println("{:s} is a mutation test tool for MiniZinc models.", MuMiniZinc::build::project_fancy_name);
 
-    std::println("\n{0:}{1:}Usage{2:}: ./{3:s} [COMMAND]\n\n{0:}{1:}Commands{2:}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), MuMiniZinc::config::executable_name);
+    std::println("\n{0:}{1:}Usage{2:}: ./{3:s} [COMMAND]\n\n{0:}{1:}Commands{2:}:", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), MuMiniZinc::build::executable_name);
 
     for (const auto& command : commands | std::views::filter([](const auto& command)
                                    { return !command.is_option() && !command.is_hidden; }))
@@ -437,7 +437,7 @@ int help_subcommand(const Command& command)
 {
     std::println("{}", command.option.help);
 
-    std::println("\n{:s}{:s}Usage{:s}: ./{:s} {:s} <MODEL> <ARGUMENTS>", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), MuMiniZinc::config::executable_name, command.option.name);
+    std::println("\n{:s}{:s}Usage{:s}: ./{:s} {:s} <MODEL> <ARGUMENTS>", logging::code(logging::Style::Bold), logging::code(logging::Style::Underline), logging::code(logging::Style::Reset), MuMiniZinc::build::executable_name, command.option.name);
 
     const auto largest_option = std::ranges::max_element(command.options,
         {}, [](const Option& option)
@@ -1103,9 +1103,9 @@ int clean(std::span<const std::string_view> arguments)
 
 int print_version()
 {
-    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}", MuMiniZinc::config::project_fancy_name, MuMiniZinc::config::project_version, MuMiniZinc::minizinc_version);
+    std::println("{:s} {:s}\nBuilt with MiniZinc {:s}", MuMiniZinc::build::project_fancy_name, MuMiniZinc::build::project_version, MuMiniZinc::minizinc_version);
 
-    if constexpr (MuMiniZinc::config::is_debug_build)
+    if constexpr (MuMiniZinc::build::is_debug_build)
         std::println("\nDebug build.");
 
     return EXIT_SUCCESS;

@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(libminizinc REQUIRED)
+find_dependency(Boost ${MUMINIZINC_REQUIRED_BOOST_VERSION} REQUIRED COMPONENTS process)
+find_dependency(nlohmann_json ${MUMINIZINC_REQUIRED_NLOHMANN_JSON_VERSION} REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/MuMiniZincTargets.cmake")
+check_required_components("@PROJECT_NAME@")

@@ -8,7 +8,7 @@
 
 #include <minizinc/ast.hh> // MiniZinc::EVisitor
 
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
 
 /**
  * @file

@@ -6,8 +6,8 @@
 
 #include <minizinc/exception.hh> // MiniZinc::Exception
 
-#include <arguments.hpp> // parse_arguments
-#include <logging.hpp>   // logging::color_support::check, logging::code, logging::Color, logging::OutputType,logging::Style,
+#include <arguments.hpp>          // parse_arguments
+#include <muminizinc/logging.hpp> // logging::color_support::check, logging::code, logging::Color, logging::OutputType,logging::Style,
 
 int main(int argc, const char** argv)
 {

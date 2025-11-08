@@ -8,9 +8,9 @@
 #include <string>      // std::string
 #include <string_view> // std::string_view
 
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <logging.hpp>                 // logging::output
-#include <mutation.hpp>                // MuMiniZinc::Entry
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/logging.hpp>                 // logging::output
+#include <muminizinc/mutation.hpp>                // MuMiniZinc::Entry
 
 /**
  * @file

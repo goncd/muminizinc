@@ -1,4 +1,4 @@
-#include <executor.hpp>
+#include <muminizinc/executor.hpp>
 
 #include <algorithm>   // std::max
 #include <chrono>      // std::chrono::seconds
@@ -28,9 +28,9 @@
 #include <boost/system/error_code.hpp>   // boost::system::error_code
 #include <boost/utility/string_view.hpp> // boost::string_view
 
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <logging.hpp>                 // logging::code, logging::color_support::get, logging::Style, logging::output
-#include <mutation.hpp>                // MuMiniZinc::Entry
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/logging.hpp>                 // logging::code, logging::color_support::get, logging::Style, logging::output
+#include <muminizinc/mutation.hpp>                // MuMiniZinc::Entry
 
 namespace
 {

@@ -6,8 +6,8 @@
 #include <filesystem> // std::filesystem::exists, std::filesystem::last_write_time, std::filesystem::path
 #include <fstream>    // std::ofstream
 
-#include <executor.hpp> // MuMiniZinc::UnknownMutant
-#include <mutation.hpp> // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::retrieve_mutants, MuMiniZinc::retrieve_mutants_args, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
+#include <muminizinc/executor.hpp> // MuMiniZinc::UnknownMutant
+#include <muminizinc/mutation.hpp> // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::retrieve_mutants, MuMiniZinc::retrieve_mutants_args, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
 
 namespace
 {

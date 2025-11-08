@@ -1,10 +1,9 @@
-#include <operators.hpp>
+#include <muminizinc/operators.hpp>
 
-#include <algorithm> // std::ranges::equal, std::ranges::next_permutation, std::ranges::sort
-#include <array>     // std::array
-#include <cstdint>   // std::uint64_t
-#include <format>    // std::format
-#include <ranges>
+#include <algorithm>   // std::ranges::contains, std::ranges::equal, std::ranges::next_permutation, std::ranges::sort
+#include <array>       // std::array
+#include <cstdint>     // std::uint64_t
+#include <format>      // std::format
 #include <span>        // std::span
 #include <string_view> // std::string_view
 #include <utility>     // std::pair
@@ -12,10 +11,10 @@
 
 #include <minizinc/ast.hh> // MiniZinc::BinOpType, MiniZinc::Expression
 
-#include <build/config.hpp>            // MuMiniZinc::config::is_debug_build
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
-#include <mutation.hpp>                // MuMiniZinc::EntryResult
+#include <muminizinc/build/config.hpp>            // MuMiniZinc::build::is_debug_build
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
+#include <muminizinc/mutation.hpp>                // MuMiniZinc::EntryResult
 
 namespace
 {
@@ -146,7 +145,7 @@ void Mutator::perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::Bi
     const auto original_operator = op->op();
     const auto& loc = MiniZinc::Expression::loc(op);
 
-    if constexpr (config::is_debug_build)
+    if constexpr (build::is_debug_build)
     {
         [[maybe_unused]] const auto& lhs = MiniZinc::Expression::loc(op->lhs());
         [[maybe_unused]] const auto& rhs = MiniZinc::Expression::loc(op->rhs());

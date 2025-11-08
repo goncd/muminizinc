@@ -1,4 +1,4 @@
-#include <mutation.hpp>
+#include <muminizinc/mutation.hpp>
 
 #include <algorithm>    // std::ranges::contains, std::ranges::find_if
 #include <array>        // std::array
@@ -29,11 +29,11 @@
 #include <minizinc/parser.hh>        // MiniZinc::parse
 #include <minizinc/prettyprinter.hh> // MiniZinc::Printer
 
-#include <build/config.hpp>            // MuMiniZinc::config::is_debug_build
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <executor.hpp>                // MuMiniZinc::execute_mutants, MuMiniZinc::execution_args
-#include <logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
-#include <operators.hpp>               // MuMiniZinc::available_operators
+#include <muminizinc/build/config.hpp>            // MuMiniZinc::build::is_debug_build
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/executor.hpp>                // MuMiniZinc::execute_mutants, MuMiniZinc::execution_args
+#include <muminizinc/logging.hpp>                 // logd, logging::code, logging::Color, logging::Style
+#include <muminizinc/operators.hpp>               // MuMiniZinc::available_operators
 
 namespace
 {
@@ -240,7 +240,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
 
     MiniZinc::Env env;
 
-    const auto* const model = MiniZinc::parse(env, {}, {}, model_contents, model_name, include_paths, {}, false, true, false, config::is_debug_build, std::cerr);
+    const auto* const model = MiniZinc::parse(env, {}, {}, model_contents, model_name, include_paths, {}, false, true, false, build::is_debug_build, std::cerr);
 
     std::vector<std::pair<std::string, std::string>> detected_enums;
 

@@ -16,9 +16,9 @@
 
 #include <boost/process/v2/environment.hpp> // boost::process::environment::find_executable
 
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <mutation.hpp>                // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::Entry::Status, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
-#include <operators.hpp>               // MuMiniZinc::available_operators
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/mutation.hpp>                // MuMiniZinc::clear_mutant_output_folder, MuMiniZinc::Entry::Status, MuMiniZinc::find_mutants, MuMiniZinc::find_mutants_args, MuMiniZinc::run_mutants, MuMiniZinc::run_mutants_args
+#include <muminizinc/operators.hpp>               // MuMiniZinc::available_operators
 
 using Status = MuMiniZinc::Entry::Status;
 

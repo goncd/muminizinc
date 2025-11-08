@@ -1,7 +1,6 @@
-find_package(Boost 1.88.0 REQUIRED COMPONENTS unit_test_framework)
+find_package(Boost ${MUMINIZINC_REQUIRED_BOOST_VERSION} REQUIRED COMPONENTS unit_test_framework)
 
 set(TEST_SOURCES
-    test_arguments.cpp
     test_mutation.cpp
     test_operator_aor.cpp
     test_operator_cor.cpp
@@ -19,17 +18,27 @@ foreach(test_file ${TEST_SOURCES})
     target_link_libraries(${test_name}
         PRIVATE
             Boost::unit_test_framework
-            ${PROJECT_NAME_LIB}
-            Boost::process
-            mzn
+            "MuMiniZinc::${PROJECT_NAME_LIB}"
             common_options
     )
 
-    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_DYN_LINK)
-    target_compile_definitions(${test_name} PRIVATE BOOST_PROCESS_USE_STD_FS=1)
+    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_DYN_LINK BOOST_PROCESS_USE_STD_FS=1)
 
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+add_executable(test_arguments test_arguments.cpp ../src/arguments.cpp)
+
+target_link_libraries(test_arguments
+    PRIVATE
+        Boost::unit_test_framework
+        "MuMiniZinc::${PROJECT_NAME_LIB}"
+        common_options
+)
+
+target_compile_definitions(test_arguments PRIVATE BOOST_TEST_DYN_LINK BOOST_PROCESS_USE_STD_FS=1)
+
+add_test(NAME test_arguments COMMAND test_arguments)
 
 set(TEST_DATA_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/data")
 set(TEST_DATA_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
@@ -38,16 +47,3 @@ set(TEST_DATA_DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/data")
 # making sure old files are deleted first.
 file(REMOVE_RECURSE ${TEST_DATA_DESTINATION})
 file(COPY ${TEST_DATA_SOURCE} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-
-# Coverage testing
-find_program(GCOVR gcovr)
-
-if(GCOVR)
-    add_custom_target(coverage
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage
-        COMMAND ${CMAKE_CTEST_COMMAND}
-        COMMAND ${GCOVR} -r ${CMAKE_SOURCE_DIR} --html-details -o coverage/coverage.html
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "Running tests and generating HTML coverage report"
-    )
-endif(GCOVR)

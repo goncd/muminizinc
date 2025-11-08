@@ -14,9 +14,9 @@
 #include <minizinc/config.hh> // MZN_VERSION_MAJOR, MZN_VERSION_MINOR, MZN_VERSION_PATCH
 #include <minizinc/model.hh>  // MiniZinc::Model
 
-#include <case_insensitive_string.hpp> // ascii_ci_string_view
-#include <logging.hpp>                 // logging::output
-#include <operators.hpp>               // MuMiniZinc::available_operators
+#include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
+#include <muminizinc/logging.hpp>                 // logging::output
+#include <muminizinc/operators.hpp>               // MuMiniZinc::available_operators
 
 /**
  * @file
