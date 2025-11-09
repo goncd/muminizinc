@@ -82,7 +82,7 @@ private:
     void perform_mutation(MiniZinc::BinOp* op, std::span<const MiniZinc::BinOpType> operators, std::string_view operator_name);
     void perform_mutation_unop(MiniZinc::BinOp* op);
     void perform_mutation_unop(MiniZinc::Call* call);
-    void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls);
+    void perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> candidate_calls);
     void perform_call_swap_mutation(MiniZinc::Call* call);
 };
 

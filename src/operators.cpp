@@ -209,13 +209,13 @@ void Mutator::perform_mutation_unop(MiniZinc::Call* call)
     }
 }
 
-void Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> calls)
+void Mutator::perform_mutation(MiniZinc::Call* call, std::span<const MiniZinc::ASTString> candidate_calls)
 {
     const auto original_call = call->id();
 
     std::uint64_t occurrence_id {};
 
-    for (const auto& candidate_call : calls)
+    for (const auto& candidate_call : candidate_calls)
     {
         if (original_call == candidate_call)
             continue;
@@ -237,8 +237,8 @@ void Mutator::perform_call_swap_mutation(MiniZinc::Call* call)
 
     logd("Mutating argument order of call to {:s}.", call->id().c_str());
 
-    const auto calls { call->args() };
-    const std::vector original(calls.begin(), calls.end());
+    const auto call_arguments { call->args() };
+    const std::vector original(call_arguments.begin(), call_arguments.end());
 
     auto permutation { original };
 
