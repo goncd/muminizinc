@@ -85,18 +85,11 @@ target_compile_options(common_options INTERFACE
             -Og
             -ggdb3>
         $<$<CONFIG:RELEASE>:
-            -O3
-            -DNDEBUG
             -march=native>>
     $<$<CXX_COMPILER_ID:MSVC>:
         /W4
         /utf-8
-        /d1trimfile:${CMAKE_CURRENT_SOURCE_DIR}
-        $<$<CONFIG:DEBUG>:
-            /Od
-            /Zi>
-        $<$<CONFIG:RELEASE>:
-            /O2>>)
+        /d1trimfile:${CMAKE_CURRENT_SOURCE_DIR}>)
 
 if(MUMINIZINC_USE_SANITIZERS)
     target_compile_options(common_options INTERFACE
@@ -108,8 +101,7 @@ if(MUMINIZINC_USE_SANITIZERS)
                 -fsanitize=address,undefined>>
         $<$<CXX_COMPILER_ID:MSVC>:
             $<$<CONFIG:DEBUG>:
-                /fsanitize=address
-                /Zi>>)
+                /fsanitize=address>>)
 
     target_link_options(common_options INTERFACE
         $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:
@@ -153,11 +145,11 @@ message(STATUS "libminizinc: Using includes: ${libminizinc_INCLUDE_DIRS}")
 target_include_directories(${PROJECT_NAME_LIB} SYSTEM PUBLIC ${libminizinc_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME_LIB} PUBLIC mzn)
 
-SET(MUMINIZINC_REQUIRED_BOOST_VERSION 1.88.0)
+set(MUMINIZINC_REQUIRED_BOOST_VERSION 1.88.0)
 find_package(Boost ${MUMINIZINC_REQUIRED_BOOST_VERSION} REQUIRED COMPONENTS process)
 target_link_libraries(${PROJECT_NAME_LIB} PUBLIC Boost::process)
 
-SET(MUMINIZINC_REQUIRED_NLOHMANN_JSON_VERSION 3.12.0)
+set(MUMINIZINC_REQUIRED_NLOHMANN_JSON_VERSION 3.12.0)
 find_package(nlohmann_json ${MUMINIZINC_REQUIRED_NLOHMANN_JSON_VERSION} REQUIRED)
 target_link_libraries(${PROJECT_NAME_LIB} PUBLIC nlohmann_json::nlohmann_json)
 
