@@ -834,6 +834,9 @@ int run(std::span<const std::string_view> arguments)
             model_path = arguments[i];
     }
 
+    if (!include_path.empty() && !in_memory)
+        throw BadArgument { std::format("{:s}: {:s}: This argument needs the option `{:s}{:s}{:s}.", arguments.front(), option_include.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
+
     if (model_path.empty())
         throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
 

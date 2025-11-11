@@ -16,7 +16,7 @@ MuMiniZinc is a mutation test tool for [MiniZinc](https://www.minizinc.org/).
 
 ### Instructions
 First, build `libminizinc` as shown:
-```console
+```bash
 $ git clone https://github.com/MiniZinc/libminizinc.git
 $ cd libminizinc
 $ cmake -S . -B build
@@ -24,7 +24,7 @@ $ cmake --build build --target mzn
 ```
 
 Then, build this project as shown:
-```
+```bash
 $ git clone https://github.com/goncd/muminizinc.git
 $ cd muminizinc
 $ cmake -DCMAKE_MODULE_PATH=/path/to/libminizinc/cmake/modules/ -S . -B build
