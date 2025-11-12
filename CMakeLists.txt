@@ -117,6 +117,10 @@ if(MUMINIZINC_USE_GCOVR
     OR (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")))
     find_program(GCOVR gcovr)
 
+    if(NOT MUMINIZINC_BUILD_TESTS)
+        message(FATAL_ERROR "MUMINIZINC_USE_GCOVR needs MUMINIZINC_BUILD_TESTS")
+    endif()
+
     if(GCOVR)
         add_custom_target(coverage
             COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage

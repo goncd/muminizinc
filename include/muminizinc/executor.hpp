@@ -7,6 +7,7 @@
 #include <span>        // std::span
 #include <string>      // std::string
 #include <string_view> // std::string_view
+#include <utility>     // std::reference_wrapper
 
 #include <muminizinc/case_insensitive_string.hpp> // ascii_ci_string_view
 #include <muminizinc/logging.hpp>                 // logging::output
@@ -25,7 +26,7 @@ class EntryResult;
 struct execution_args
 {
     /** The path of the compiler. */
-    const std::filesystem::path& compiler_path;
+    std::reference_wrapper<const std::filesystem::path> compiler_path;
 
     /**
      * The arguments that will be passed to the compiler. More

@@ -7,7 +7,7 @@
 #include <span>        // std::span
 #include <string>      // std::string
 #include <string_view> // std::string_view
-#include <utility>     // std::move
+#include <utility>     // std::move, std::reference_wrapper
 #include <variant>     // std::variant
 #include <vector>      // std::vector
 
@@ -195,10 +195,10 @@ struct find_mutants_args
 struct retrieve_mutants_args
 {
     /** The path to the model. */
-    const std::filesystem::path& model_path;
+    std::reference_wrapper<const std::filesystem::path> model_path;
 
     /** The path to the directory that should have the mutants. */
-    const std::filesystem::path& directory_path;
+    std::reference_wrapper<const std::filesystem::path> directory_path;
 
     /** A list of the allowed operators to retrieve. */
     std::span<const ascii_ci_string_view> allowed_operators;
@@ -217,7 +217,7 @@ struct run_mutants_args
     EntryResult& entry_result;
 
     /** The path to the compiler that will be used for executing the model and the mutants. */
-    const std::filesystem::path& compiler_path;
+    std::reference_wrapper<const std::filesystem::path> compiler_path;
 
     /** The arguments that will be passed to the compiler. */
     std::span<const std::string_view> compiler_arguments;

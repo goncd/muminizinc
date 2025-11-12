@@ -302,14 +302,14 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
     if (!std::filesystem::is_directory(parameters.directory_path))
         throw IOError { std::format("The directory `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), logging::path_to_utf8(parameters.model_path), logging::code(logging::Style::Reset)) };
 
-    if (!parameters.model_path.has_stem())
-        throw IOError { "Could not determine the filename without extension of the model. (retrieve)" };
+    if (!parameters.model_path.get().has_stem())
+        throw IOError { "Could not determine the filename without extension of the model." };
 
     if (!std::filesystem::exists(parameters.model_path))
         throw IOError { std::format("The path `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), logging::path_to_utf8(parameters.model_path), logging::code(logging::Style::Reset)) };
 
     EntryResult entry_result;
-    entry_result.m_model_name = parameters.model_path.stem().generic_string();
+    entry_result.m_model_name = parameters.model_path.get().stem().generic_string();
 
     std::error_code last_write_ec {};
     const auto last_write_time_original = parameters.check_model_last_modified_time ? std::filesystem::last_write_time(parameters.model_path, last_write_ec) : std::filesystem::file_time_type::min();
