@@ -1,5 +1,3 @@
-find_package(Boost ${MUMINIZINC_REQUIRED_BOOST_VERSION} REQUIRED COMPONENTS unit_test_framework)
-
 set(TEST_SOURCES
     test_mutation.cpp
     test_operator_aor.cpp
@@ -15,28 +13,16 @@ foreach(test_file ${TEST_SOURCES})
     get_filename_component(test_name ${test_file} NAME_WE)
     add_executable(${test_name} ${test_file})
 
-    target_link_libraries(${test_name}
-        PRIVATE
-            Boost::unit_test_framework
-            "MuMiniZinc::${PROJECT_NAME_LIB}"
-            common_options
-    )
-
-    target_compile_definitions(${test_name} PRIVATE BOOST_TEST_DYN_LINK BOOST_PROCESS_USE_STD_FS=1)
+    target_link_libraries(${test_name} PRIVATE "MuMiniZinc::${PROJECT_NAME_LIB}" common_options)
+    target_compile_definitions(${test_name} PRIVATE BOOST_PROCESS_USE_STD_FS=1)
 
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
 add_executable(test_arguments test_arguments.cpp ../src/arguments.cpp)
 
-target_link_libraries(test_arguments
-    PRIVATE
-        Boost::unit_test_framework
-        "MuMiniZinc::${PROJECT_NAME_LIB}"
-        common_options
-)
-
-target_compile_definitions(test_arguments PRIVATE BOOST_TEST_DYN_LINK BOOST_PROCESS_USE_STD_FS=1)
+target_link_libraries(test_arguments PRIVATE "MuMiniZinc::${PROJECT_NAME_LIB}" common_options)
+target_compile_definitions(test_arguments PRIVATE BOOST_PROCESS_USE_STD_FS=1)
 
 add_test(NAME test_arguments COMMAND test_arguments)
 

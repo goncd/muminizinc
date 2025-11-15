@@ -51,8 +51,18 @@ inline void perform_test_execution(const std::filesystem::path& path, std::span<
 
     MuMiniZinc::clear_mutant_output_folder(path, output_directory);
 
-    // Check that the generated mutants and the dumped mutants are the exact same.
-    BOOST_REQUIRE(std::ranges::equal(entries.mutants(), dumped_entries.mutants()));
+    // Check that the generated mutants and the dumped mutants are the exact same, but
+    // ignoring the exact order of the retrieved mutants.
+    BOOST_REQUIRE(entries.mutants().size() == dumped_entries.mutants().size());
+    const auto dumped_mutants = dumped_entries.mutants();
+
+    for (auto [index, mutant] : entries.mutants() | std::views::enumerate)
+    {
+        BOOST_CHECK_MESSAGE(std::ranges::any_of(dumped_mutants, [mutant](const auto& entry)
+                                { return entry == mutant; }),
+            std::format("Expected mutant #{:d} cannot be found among the result when retreived.", index));
+    }
+
     BOOST_REQUIRE(entries.model_name() == dumped_entries.model_name());
     BOOST_REQUIRE(entries.normalized_model() == dumped_entries.normalized_model());
 

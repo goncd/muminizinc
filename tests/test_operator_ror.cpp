@@ -1,5 +1,5 @@
 #define BOOST_TEST_MODULE test_operator_ror
-#include <boost/test/unit_test.hpp>
+#include <boost/test/included/unit_test.hpp>
 
 #include <array>       // std::array
 #include <string>      // std::string_literals

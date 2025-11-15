@@ -1,0 +1,10 @@
+{
+    "name": "muminizinc",
+    "version-string": "1.0.0",
+    "dependencies": [
+        "boost-process",
+        "boost-test",
+        "nlohmann-json"
+    ],
+    "builtin-baseline": "74e6536215718009aae747d86d84b78376bf9e09"
+}

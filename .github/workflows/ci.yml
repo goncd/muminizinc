@@ -1,0 +1,73 @@
+name: CI
+
+env:
+  LIBMINIZINC_REPO_URL: https://github.com/MiniZinc/libminizinc
+  MINIZINC_COMPILER_URL: https://github.com/MiniZinc/MiniZincIDE/releases/download/2.9.4/MiniZincIDE-2.9.4-bundle-linux-x86_64.tgz
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tests:
+    name: 'Build and run tests'
+    runs-on: ubuntu-latest
+
+    env:
+      CC: gcc-14
+      CXX: g++-14
+
+    steps:
+      - name: Download MiniZinc .tgz
+        run: |
+          curl -sSL -o ${{ runner.temp }}/minizinc.tgz ${{ env.MINIZINC_COMPILER_URL }}
+
+      - name: Extract archive
+        run: |
+          mkdir ${{ runner.temp }}/minizinc_runtime
+          tar -xzf ${{ runner.temp }}/minizinc.tgz -C ${{ runner.temp }}/minizinc_runtime
+
+      - name: Add tool to PATH
+        run: |
+          EXTRACTED_DIR="$(find ${{ runner.temp }}/minizinc_runtime -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          echo "$EXTRACTED_DIR/bin" >> $GITHUB_PATH
+
+      - name: 'Install MiniZinc dependencies'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bison flex g++-14 libgl1 libegl1
+
+      - name: 'Clone the main repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install CMake'
+        uses: lukka/get-cmake@latest
+
+      - name: 'Install vcpkg and the dependencies'
+        uses: lukka/run-vcpkg@v11
+
+      - name: 'Clone libminizinc'
+        run: |
+          git clone ${{ env.LIBMINIZINC_REPO_URL }} ${{ runner.temp }}/libminizinc
+
+      - name: 'Compile libminizinc'
+        run: |
+          cmake -S ${{ runner.temp }}/libminizinc \
+                -B ${{ runner.temp }}/libminizinc/build \
+                -DCMAKE_BUILD_TYPE=Release
+          cmake --build ${{ runner.temp }}/libminizinc/build --config Release --target mzn
+
+      - name: 'Configure the main repository'
+        run: |
+          cmake -S . -B build \
+                -DCMAKE_BUILD_TYPE=Debug \
+                -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+                -Dlibminizinc_DIR=${{ runner.temp }}/libminizinc/build
+
+      - name: 'Compile the main repository'
+        run: cmake --build build --config Debug
+
+      - name: 'Run the tests'
+        run: ctest --test-dir build -C Debug --output-on-failure

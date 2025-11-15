@@ -757,7 +757,7 @@ int run(std::span<const std::string_view> arguments)
                 for (const auto& element : std::filesystem::directory_iterator(path))
                 {
                     if (!element.is_regular_file() && !element.is_symlink())
-                        throw BadArgument { std::format("{:s}: {:s}: Found an invalid file or a folder inside the folder \"{:s}{:s}{:s}\".", arguments.front(), option_data.name, logging::code(logging::Color::Blue), given_path, logging::code(logging::Style::Reset)) };
+                        throw BadArgument { std::format("{:s}: {:s}: Found an invalid file or a folder inside the folder \"{:s}{:s}{:s}\".", arguments.front(), option_data.name, logging::code(logging::Color::Blue), logging::path_to_utf8(path), logging::code(logging::Style::Reset)) };
 
                     data_files.emplace_back(element.path().string());
                 }
