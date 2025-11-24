@@ -135,7 +135,7 @@ void launch_process(boost::asio::io_context& ctx, const std::filesystem::path& p
                     job.status = MuMiniZinc::Entry::Status::Dead;
             }
 
-            launch_process(ctx, path, timeout, jobs, arguments,completed_tasks, total_tasks, logging_output); });
+            launch_process(ctx, path, timeout, jobs, arguments, completed_tasks, total_tasks, logging_output); });
 }
 
 void check_version(boost::asio::io_context& ctx, const std::filesystem::path& path)

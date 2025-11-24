@@ -835,7 +835,7 @@ int run(std::span<const std::string_view> arguments)
     }
 
     if (!include_path.empty() && !in_memory)
-        throw BadArgument { std::format("{:s}: {:s}: This argument needs the option `{:s}{:s}{:s}.", arguments.front(), option_include.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
+        throw BadArgument { std::format("{:s}: {:s}: This argument needs the option `{:s}{:s}{:s}`.", arguments.front(), option_include.name, logging::code(logging::Color::Blue), option_in_memory.name, logging::code(logging::Style::Reset)) };
 
     if (model_path.empty())
         throw BadArgument { std::format("{:s}: Missing model path.", arguments.front()) };
@@ -845,7 +845,7 @@ int run(std::span<const std::string_view> arguments)
     const auto executable = std::filesystem::exists(executable_from_user) ? executable_from_user : boost::process::environment::find_executable(executable_from_user);
 
     if (executable.empty())
-        throw BadArgument { std::format("{:s}: Could not find the executable `{:s}{:s}{:s}`. Please add it to $PATH or provide its path using `{:s}{:s}{:s}.`", arguments.front(), logging::code(logging::Color::Blue), logging::path_to_utf8(executable_from_user), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), option_compiler_path.name, logging::code(logging::Style::Reset)) };
+        throw BadArgument { std::format("{:s}: Could not find the executable `{:s}{:s}{:s}`. Please add it to $PATH or provide its path using `{:s}{:s}{:s}`.", arguments.front(), logging::code(logging::Color::Blue), logging::path_to_utf8(executable_from_user), logging::code(logging::Style::Reset), logging::code(logging::Color::Blue), option_compiler_path.name, logging::code(logging::Style::Reset)) };
 
     std::optional<std::ofstream> output_file;
 

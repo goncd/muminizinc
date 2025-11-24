@@ -88,7 +88,7 @@ void dump_file(const std::filesystem::path& path, std::string_view contents)
 
     file << contents;
 
-    if (file.bad())
+    if (file.fail())
         throw MuMiniZinc::IOError { std::format(R"(Could not write to the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), logging::path_to_utf8(path), logging::code(logging::Style::Reset)) };
 }
 
@@ -142,7 +142,7 @@ constexpr auto get_model = [](auto&& element) -> std::pair<std::string, std::str
         std::stringstream buffer;
         buffer << ifstream.rdbuf();
 
-        if (ifstream.bad())
+        if (ifstream.fail())
             throw MuMiniZinc::IOError { std::format(R"(Could not open the file `{:s}{:s}{:s}`.)", logging::code(logging::Color::Blue), logging::path_to_utf8(element.get()), logging::code(logging::Style::Reset)) };
 
         return std::pair { element.get().stem().string(), std::move(buffer).str() };
@@ -300,7 +300,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
     throw_if_invalid_operators(parameters.allowed_operators);
 
     if (!std::filesystem::is_directory(parameters.directory_path))
-        throw IOError { std::format("The directory `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), logging::path_to_utf8(parameters.model_path), logging::code(logging::Style::Reset)) };
+        throw IOError { std::format("The directory `{:s}{:s}{:s}` does not exist.", logging::code(logging::Color::Blue), logging::path_to_utf8(parameters.directory_path), logging::code(logging::Style::Reset)) };
 
     if (!parameters.model_path.get().has_stem())
         throw IOError { "Could not determine the filename without extension of the model." };
@@ -350,7 +350,7 @@ void EntryResult::save_model(const MiniZinc::Model* model, std::string_view oper
         std::stringstream buffer;
         buffer << ifstream.rdbuf();
 
-        if (ifstream.bad())
+        if (ifstream.fail())
             throw IOError { std::format(R"(Could not open the file `{:s}`.)", logging::path_to_utf8(entry.path())) };
 
         auto str = std::move(buffer).str();
