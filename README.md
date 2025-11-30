@@ -24,23 +24,19 @@ $ muminizinc help <COMMAND>
 ```
 
 ## Obtaining MuMiniZinc
-Most users will want to build a Docker image, as it's an automated process and there are fewer requirements to satisfy.
+Most users will want to use the Docker image, as it's an automated process and there are fewer requirements to satisfy.
 
-### Building a Docker image (recommended)
-First, install Docker. Then, build the image as shown:
+### Using the Docker image (recommended)
+First, install Docker. Then, add the `docker` folder to your `PATH` environment variable. Then, make sure the appropiate script is executable by your user.
+
+You will be able to run MuMiniZinc as follows:
 ```bash
-$ git clone https://github.com/goncd/muminizinc.git
-$ cd muminizinc
-$ docker build -t muminizinc .
+$ muminizinc
 ```
 
-Once it's built, you are now ready to run MuMiniZinc. The official MiniZinc package is automatically downloaded, so you don't need to bring your own copy of the compiler or the standard library.
+The current directory will be automatically mounted to the container, so you can work with models that are in your current directory or below it.
 
-You can use the tool as shown:
-```bash
-$ docker run --rm -it muminizinc --version
-$ docker run --rm -it -v ./models:/models/ muminizinc analyse /models/model.mzn
-```
+The official MiniZinc package is automatically downloaded, so you don't need to bring your own copy of the compiler or the standard library.
 
 You can change the download path of both libminizinc and the MiniZinc package by setting the `LIBMINIZINC_URL` and `MINIZINC_URL` arguments respectively when building the image.
 
@@ -77,7 +73,6 @@ $ cmake --build build
 Once it's built, the MuMiniZinc executable should be at `build/muminizinc`.
 
 To run the mutants and the models, as well as to analyse some models, you will need to have a copy of MiniZinc and its standard library, which you can get on its official website. Then, add the `bin` path to the `PATH` environment variable or set the `--compiler-path` argument. You may also need to specify the standard library path with `--include` if it's not autodetected. **You don't need to download anyting if you are using the Docker image, as it already downloads the official MiniZinc package for you**.
-
 
 #### Available CMake options
 You can customize the behaviour of the build system by setting the following options:

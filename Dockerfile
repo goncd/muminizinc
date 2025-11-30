@@ -27,7 +27,11 @@ RUN wget -q "$MINIZINC_URL" -O minizinc.tgz \
 
 WORKDIR /app
 
-COPY . .
+COPY CMakeLists.txt  .
+COPY cmake/ cmake/
+COPY include/ include/
+COPY src/ src/
+COPY tests/ tests/
 
 RUN cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Release \
@@ -58,9 +62,8 @@ WORKDIR /app
 COPY --from=builder /dependencies/minizinc .
 COPY --from=builder /app/build/muminizinc bin/muminizinc
 
-RUN chown ubuntu:ubuntu bin/muminizinc && chmod +x bin/muminizinc
-USER ubuntu
+RUN chmod +x bin/muminizinc
 
 ENV PATH="/app/bin:${PATH}"
 
-ENTRYPOINT ["./bin/muminizinc"]
+ENTRYPOINT ["muminizinc"]

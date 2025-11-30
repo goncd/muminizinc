@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -e
+
+IMAGE_NAME="muminizinc:latest"
+USER_UID=$(id -u)
+USER_GID=$(id -g)
+PWD_MOUNT="$(pwd)"
+
+# Check if sudo is needed.
+if [ ! -w "/var/run/docker.sock" ] && [ "$EUID" -ne 0 ]; then
+    DOCKER_CMD="sudo docker"
+else
+    DOCKER_CMD="docker"
+fi
+
+# Only build the image if it does not exist or if instructed to do so
+# with `--rebuild-docker-image`.
+FORCE_REBUILD=false
+PASSTHROUGH_ARGS=()
+
+for arg in "$@"; do
+    if [ "$arg" == "--rebuild-docker-image" ]; then
+        FORCE_REBUILD=true
+    else
+        PASSTHROUGH_ARGS+=("$arg")
+    fi
+done
+
+IMAGE_ID="$($DOCKER_CMD images -q "$IMAGE_NAME" 2> /dev/null)"
+if [ "$FORCE_REBUILD" = true ] || [ -z "$IMAGE_ID" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+    $DOCKER_CMD build -t "$IMAGE_NAME" "$PROJECT_ROOT"
+fi
+
+# Check if the input is a terminal.
+if [ -t 0 ]; then
+    DOCKER_FLAGS="-it"
+else
+    DOCKER_FLAGS="-i"
+fi
+
+# Check if the output is a terminal.
+# This value can be overriden by the user.
+if [ -t 1 ]; then
+    DEFAULT_COLOR_ARGS=("-c" "true")
+else
+    DEFAULT_COLOR_ARGS=("-c" "false")
+fi
+
+$DOCKER_CMD run --rm $DOCKER_FLAGS \
+  -u "${USER_UID}:${USER_GID}" \
+  -v "${PWD_MOUNT}:/workspace" \
+  -w /workspace \
+  "$IMAGE_NAME" "${DEFAULT_COLOR_ARGS[@]}" "${PASSTHROUGH_ARGS[@]}"
