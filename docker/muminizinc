@@ -31,7 +31,7 @@ if [ "$FORCE_REBUILD" = true ] || [ -z "$IMAGE_ID" ]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-    $DOCKER_CMD build -t "$IMAGE_NAME" "$PROJECT_ROOT"
+    $DOCKER_CMD build --platform=linux/amd64 -t "$IMAGE_NAME" "$PROJECT_ROOT"
 fi
 
 # Check if the input is a terminal.
@@ -49,7 +49,7 @@ else
     DEFAULT_COLOR_ARGS=("-c" "false")
 fi
 
-$DOCKER_CMD run --rm $DOCKER_FLAGS \
+$DOCKER_CMD run --platform=linux/amd64 --rm $DOCKER_FLAGS \
   -u "${USER_UID}:${USER_GID}" \
   -v "${PWD_MOUNT}:/workspace" \
   -w /workspace \

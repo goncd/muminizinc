@@ -38,7 +38,7 @@ The current directory will be automatically mounted to the container, so you can
 
 The official MiniZinc package is automatically downloaded, so you don't need to bring your own copy of the compiler or the standard library.
 
-You can change the download path of both libminizinc and the MiniZinc package by setting the `LIBMINIZINC_URL` and `MINIZINC_URL` arguments respectively when building the image.
+You can change the download path of both libminizinc and the MiniZinc package by setting the `LIBMINIZINC_URL` and `MINIZINC_URL` arguments respectively when building the image. You can force a rebuild of the image by issuing the `--rebuild-docker-image` parameter.
 
 ### Manually building the project
 
